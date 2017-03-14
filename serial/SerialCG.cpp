@@ -26,13 +26,26 @@ class SerialCG : public CG {
     return nullptr;
   }
 
-  virtual void init(const char *matrixFile);
+  virtual bool supportsMatrixFormat(MatrixFormat format) override {
+    return format == MatrixFormatCOO || format == MatrixFormatCRS ||
+           format == MatrixFormatELL;
+  }
+
+  virtual void init(const char *matrixFile) override;
 
   virtual void cpy(Vector _dst, Vector _src) override;
+
+  void matvecKernelCOO(floatType *x, floatType *y);
+  void matvecKernelCRS(floatType *x, floatType *y);
+  void matvecKernelELL(floatType *x, floatType *y);
+
   virtual void matvecKernel(Vector _x, Vector _y) override;
   virtual void axpyKernel(floatType a, Vector _x, Vector _y) override;
   virtual void xpayKernel(Vector _x, floatType a, Vector _y) override;
   virtual floatType vectorDotKernel(Vector _a, Vector _b) override;
+
+public:
+  SerialCG() : CG(MatrixFormatCRS) {}
 };
 
 void SerialCG::init(const char *matrixFile) {
@@ -47,14 +60,51 @@ void SerialCG::cpy(Vector _dst, Vector _src) {
   std::memcpy(getVector(_dst), getVector(_src), sizeof(floatType) * N);
 }
 
-void SerialCG::matvecKernel(Vector _x, Vector _y) {
-  floatType *x = getVector(_x);
-  floatType *y = getVector(_y);
-
+void SerialCG::matvecKernelCOO(floatType *x, floatType *y) {
   std::memset(y, 0, sizeof(floatType) * N);
 
   for (int i = 0; i < nz; i++) {
     y[matrixCOO->I[i]] += matrixCOO->V[i] * x[matrixCOO->J[i]];
+  }
+}
+
+void SerialCG::matvecKernelCRS(floatType *x, floatType *y) {
+  for (int i = 0; i < N; i++) {
+    floatType tmp = 0;
+    for (int j = matrixCRS->ptr[i]; j < matrixCRS->ptr[i + 1]; j++) {
+      tmp += matrixCRS->value[j] * x[matrixCRS->index[j]];
+    }
+    y[i] = tmp;
+  }
+}
+
+void SerialCG::matvecKernelELL(floatType *x, floatType *y) {
+  for (int i = 0; i < N; i++) {
+    floatType tmp = 0;
+    for (int j = 0; j < matrixELL->length[i]; j++) {
+      int k = j * N + i;
+      tmp += matrixELL->data[k] * x[matrixELL->index[k]];
+    }
+    y[i] = tmp;
+  }
+}
+
+void SerialCG::matvecKernel(Vector _x, Vector _y) {
+  floatType *x = getVector(_x);
+  floatType *y = getVector(_y);
+
+  switch (matrixFormat) {
+  case MatrixFormatCOO:
+    matvecKernelCOO(x, y);
+    break;
+  case MatrixFormatCRS:
+    matvecKernelCRS(x, y);
+    break;
+  case MatrixFormatELL:
+    matvecKernelELL(x, y);
+    break;
+  default:
+    assert(0 && "Invalid matrix format!");
   }
 }
 

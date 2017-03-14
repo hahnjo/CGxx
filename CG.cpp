@@ -1,8 +1,10 @@
+#include <algorithm>
 #include <cmath>
 #include <cstdlib>
 #include <cstring>
 #include <iomanip>
 #include <iostream>
+#include <locale>
 #include <memory>
 
 #include "CG.h"
@@ -10,6 +12,11 @@
 
 const char *CG_MAX_ITER = "CG_MAX_ITER";
 const char *CG_TOLERANCE = "CG_TOLERANCE";
+
+const char *CG_MATRIX_FORMAT = "CG_MATRIX_FORMAT";
+const char *CG_MATRIX_FORMAT_COO = "COO";
+const char *CG_MATRIX_FORMAT_CRS = "CRS";
+const char *CG_MATRIX_FORMAT_ELL = "ELL";
 
 void CG::parseEnvironment() {
   const char *env;
@@ -36,6 +43,43 @@ void CG::parseEnvironment() {
       std::exit(1);
     }
   }
+
+  env = std::getenv(CG_MATRIX_FORMAT);
+  if (env != NULL && *env != 0) {
+    std::string upper(env);
+    std::transform(upper.begin(), upper.end(), upper.begin(),
+                   [](char c) { return std::toupper(c); });
+
+    if (upper == CG_MATRIX_FORMAT_COO) {
+      matrixFormat = MatrixFormatCOO;
+    } else if (upper == CG_MATRIX_FORMAT_CRS) {
+      matrixFormat = MatrixFormatCRS;
+    } else if (upper == CG_MATRIX_FORMAT_ELL) {
+      matrixFormat = MatrixFormatELL;
+    } else {
+      std::cerr << "Invalid value for " << CG_MATRIX_FORMAT << "! ("
+                << CG_MATRIX_FORMAT_COO << ", " << CG_MATRIX_FORMAT_CRS
+                << ", or " << CG_MATRIX_FORMAT_ELL << ")" << std::endl;
+      std::exit(1);
+    }
+
+    if (!supportsMatrixFormat(matrixFormat)) {
+      std::cerr << "No support for this matrix format!" << std::endl;
+      std::exit(1);
+    }
+  }
+}
+
+void CG::allocateMatrixCRS() {
+  matrixCRS->ptr.reset(new int[matrixCRS->N + 1]);
+  matrixCRS->index.reset(new int[matrixCRS->nz]);
+  matrixCRS->value.reset(new floatType[matrixCRS->nz]);
+}
+
+void CG::allocateMatrixELL() {
+  matrixELL->length.reset(new int[matrixELL->N]);
+  matrixELL->index.reset(new int[matrixELL->elements]);
+  matrixELL->data.reset(new floatType[matrixELL->elements]);
 }
 
 void CG::allocateK() { k.reset(new floatType[N]); }
@@ -59,6 +103,28 @@ void CG::init(const char *matrixFile) {
   allocateX();
   // Start with (0, ..., 0)^T
   std::memset(x.get(), 0, sizeof(floatType) * N);
+
+  // Eventually transform the matrix into requested format.
+  switch (matrixFormat) {
+  case MatrixFormatCRS:
+    // Allocate matrix.
+    matrixCRS.reset(new MatrixCRS(N, nz));
+    allocateMatrixCRS();
+
+    // Copy data and release matrixCOO which is not needed anymore.
+    matrixCRS->fillFromCOO(*matrixCOO);
+    matrixCOO.reset();
+    break;
+  case MatrixFormatELL:
+    // Allocate matrix.
+    matrixELL.reset(new MatrixELL(N, nz, matrixCOO->getMaxNz()));
+    allocateMatrixELL();
+
+    // Copy data and release matrixCOO which is not needed anymore.
+    matrixELL->fillFromCOO(*matrixCOO);
+    matrixCOO.reset();
+    break;
+  }
 }
 
 // #define DEBUG_SOLVE

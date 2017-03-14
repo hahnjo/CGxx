@@ -17,6 +17,12 @@ public:
     VectorR,
   };
 
+  enum MatrixFormat {
+    MatrixFormatCOO,
+    MatrixFormatCRS,
+    MatrixFormatELL,
+  };
+
 private:
   int iteration;
   int maxIterations = 1000;
@@ -68,10 +74,21 @@ private:
 protected:
   int N;
   int nz;
+
+  MatrixFormat matrixFormat;
   std::unique_ptr<MatrixCOO> matrixCOO;
+  std::unique_ptr<MatrixCRS> matrixCRS;
+  std::unique_ptr<MatrixELL> matrixELL;
 
   std::unique_ptr<floatType[]> k;
   std::unique_ptr<floatType[]> x;
+
+  CG(MatrixFormat defaultMatrixFormat) : matrixFormat(defaultMatrixFormat) {}
+
+  virtual bool supportsMatrixFormat(MatrixFormat format) = 0;
+
+  virtual void allocateMatrixCRS();
+  virtual void allocateMatrixELL();
 
   virtual void allocateK();
   virtual void allocateX();

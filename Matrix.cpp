@@ -1,4 +1,6 @@
+#include <cassert>
 #include <cstdio>
+#include <cstring>
 #include <iostream>
 
 #include "Matrix.h"
@@ -74,4 +76,60 @@ void MatrixCOO::readFromFile(const char *file) {
   }
 
   fclose(fp);
+}
+
+int MatrixCOO::getMaxNz() const {
+  int maxNz = 0;
+  for (int i = 0; i < N; i++) {
+    if (nzPerRow[i] > maxNz) {
+      maxNz = nzPerRow[i];
+    }
+  }
+  return maxNz;
+}
+
+void MatrixCRS::fillFromCOO(const MatrixCOO &coo) {
+  assert(N == coo.N);
+  assert(nz == coo.nz);
+
+  // Temporary memory to store current offset in index / value per row.
+  std::unique_ptr<int[]> offsets(new int[N]);
+
+  // Construct ptr and initial values for offsets.
+  ptr[0] = 0;
+  for (int i = 1; i <= N; i++) {
+    // Copy ptr[i - 1] as initial value for offsets[i - 1].
+    offsets[i - 1] = ptr[i - 1];
+
+    ptr[i] = ptr[i - 1] + coo.nzPerRow[i - 1];
+  }
+
+  // Construct index and value.
+  for (int i = 0; i < nz; i++) {
+    int row = coo.I[i];
+    index[offsets[row]] = coo.J[i];
+    value[offsets[row]] = coo.V[i];
+    offsets[row]++;
+  }
+}
+
+void MatrixELL::fillFromCOO(const MatrixCOO &coo) {
+  assert(N == coo.N);
+  assert(nz == coo.nz);
+
+  // Copy over already collected nonzeros per row.
+  std::memcpy(length.get(), coo.nzPerRow.get(), sizeof(int) * N);
+
+  // Temporary memory to store current offset in index / value per row.
+  std::unique_ptr<int[]> offsets(new int[N]);
+  std::memset(offsets.get(), 0, sizeof(int) * N);
+
+  // Construct column and value.
+  for (int i = 0; i < nz; i++) {
+    int row = coo.I[i];
+    int k = offsets[row] * N + row;
+    index[k] = coo.J[i];
+    data[k] = coo.V[i];
+    offsets[row]++;
+  }
 }
