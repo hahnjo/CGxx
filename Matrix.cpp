@@ -68,6 +68,7 @@ MatrixCOO::MatrixCOO(const char *file) {
       i++;
       I[i] = J[i - 1];
       J[i] = I[i - 1];
+      V[i] = V[i - 1];
 
       // Count nz for each row. I[i] is now J[i -1]!
       nzPerRow[I[i]]++;
