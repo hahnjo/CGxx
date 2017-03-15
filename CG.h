@@ -87,11 +87,15 @@ protected:
 
   virtual bool supportsMatrixFormat(MatrixFormat format) = 0;
 
-  virtual void allocateMatrixCRS();
-  virtual void allocateMatrixELL();
+  virtual void convertToMatrixCRS() {
+    matrixCRS.reset(new MatrixCRS(*matrixCOO));
+  }
+  virtual void convertToMatrixELL() {
+    matrixELL.reset(new MatrixELL(*matrixCOO));
+  }
 
-  virtual void allocateK();
-  virtual void allocateX();
+  virtual void allocateK() { k.reset(new floatType[N]); }
+  virtual void allocateX() { x.reset(new floatType[N]); }
 
   virtual void cpy(Vector _dst, Vector _src) = 0;
   virtual void matvecKernel(Vector _x, Vector _y) = 0;

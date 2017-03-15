@@ -8,9 +8,6 @@
 struct Matrix {
   int N;
   int nz;
-
-  Matrix() = default;
-  Matrix(int N, int nz) : N(N), nz(nz) {}
 };
 
 struct MatrixCOO : Matrix {
@@ -20,9 +17,9 @@ struct MatrixCOO : Matrix {
 
   std::unique_ptr<int[]> nzPerRow;
 
-  MatrixCOO() = default;
+  MatrixCOO() = delete;
+  MatrixCOO(const char *file);
 
-  void readFromFile(const char *file);
   int getMaxNz() const;
 };
 
@@ -32,9 +29,13 @@ struct MatrixCRS : Matrix {
   std::unique_ptr<floatType[]> value;
 
   MatrixCRS() = delete;
-  MatrixCRS(int N, int nz) : Matrix(N, nz) {}
+  MatrixCRS(const MatrixCOO &coo);
 
-  void fillFromCOO(const MatrixCOO &coo);
+  virtual void allocatePtr() { ptr.reset(new int[N + 1]); }
+  virtual void allocateIndexAndValue() {
+    index.reset(new int[nz]);
+    value.reset(new floatType[nz]);
+  }
 };
 
 struct MatrixELL : Matrix {
@@ -46,11 +47,13 @@ struct MatrixELL : Matrix {
   std::unique_ptr<floatType[]> data;
 
   MatrixELL() = delete;
-  MatrixELL(int N, int nz, int maxNz) : Matrix(N, nz), maxNz(maxNz) {
-    elements = maxNz * N;
-  }
+  MatrixELL(const MatrixCOO &coo);
 
-  void fillFromCOO(const MatrixCOO &coo);
+  virtual void allocateLength() { length.reset(new int[N]); }
+  virtual void allocateIndexAndData() {
+    index.reset(new int[elements]);
+    data.reset(new floatType[elements]);
+  }
 };
 
 #endif

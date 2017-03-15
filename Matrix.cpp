@@ -1,4 +1,3 @@
-#include <cassert>
 #include <cstdio>
 #include <cstring>
 #include <iostream>
@@ -9,7 +8,7 @@ extern "C" {
 #include "mmio.h"
 };
 
-void MatrixCOO::readFromFile(const char *file) {
+MatrixCOO::MatrixCOO(const char *file) {
   FILE *fp = fopen(file, "r");
   if (fp == NULL) {
     std::cerr << "ERROR: Can't open file!" << std::endl;
@@ -88,14 +87,15 @@ int MatrixCOO::getMaxNz() const {
   return maxNz;
 }
 
-void MatrixCRS::fillFromCOO(const MatrixCOO &coo) {
-  assert(N == coo.N);
-  assert(nz == coo.nz);
+MatrixCRS::MatrixCRS(const MatrixCOO &coo) {
+  N = coo.N;
+  nz = coo.nz;
 
   // Temporary memory to store current offset in index / value per row.
   std::unique_ptr<int[]> offsets(new int[N]);
 
   // Construct ptr and initial values for offsets.
+  allocatePtr();
   ptr[0] = 0;
   for (int i = 1; i <= N; i++) {
     // Copy ptr[i - 1] as initial value for offsets[i - 1].
@@ -105,6 +105,7 @@ void MatrixCRS::fillFromCOO(const MatrixCOO &coo) {
   }
 
   // Construct index and value.
+  allocateIndexAndValue();
   for (int i = 0; i < nz; i++) {
     int row = coo.I[i];
     index[offsets[row]] = coo.J[i];
@@ -113,18 +114,21 @@ void MatrixCRS::fillFromCOO(const MatrixCOO &coo) {
   }
 }
 
-void MatrixELL::fillFromCOO(const MatrixCOO &coo) {
-  assert(N == coo.N);
-  assert(nz == coo.nz);
+MatrixELL::MatrixELL(const MatrixCOO &coo) {
+  N = coo.N;
+  nz = coo.nz;
+  elements = N * coo.getMaxNz();
 
   // Copy over already collected nonzeros per row.
+  allocateLength();
   std::memcpy(length.get(), coo.nzPerRow.get(), sizeof(int) * N);
 
   // Temporary memory to store current offset in index / value per row.
   std::unique_ptr<int[]> offsets(new int[N]);
   std::memset(offsets.get(), 0, sizeof(int) * N);
 
-  // Construct column and value.
+  // Construct column and data.
+  allocateIndexAndData();
   for (int i = 0; i < nz; i++) {
     int row = coo.I[i];
     int k = offsets[row] * N + row;

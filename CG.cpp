@@ -70,28 +70,23 @@ void CG::parseEnvironment() {
   }
 }
 
-void CG::allocateMatrixCRS() {
-  matrixCRS->ptr.reset(new int[matrixCRS->N + 1]);
-  matrixCRS->index.reset(new int[matrixCRS->nz]);
-  matrixCRS->value.reset(new floatType[matrixCRS->nz]);
-}
-
-void CG::allocateMatrixELL() {
-  matrixELL->length.reset(new int[matrixELL->N]);
-  matrixELL->index.reset(new int[matrixELL->elements]);
-  matrixELL->data.reset(new floatType[matrixELL->elements]);
-}
-
-void CG::allocateK() { k.reset(new floatType[N]); }
-
-void CG::allocateX() { x.reset(new floatType[N]); }
-
 void CG::init(const char *matrixFile) {
-  matrixCOO.reset(new MatrixCOO);
-  matrixCOO->readFromFile(matrixFile);
+  matrixCOO.reset(new MatrixCOO(matrixFile));
   // Copy over size of read matrix.
   N = matrixCOO->N;
   nz = matrixCOO->nz;
+
+  // Eventually transform the matrix into requested format.
+  switch (matrixFormat) {
+  case MatrixFormatCRS:
+    // Allocate matrix.
+    convertToMatrixCRS();
+    break;
+  case MatrixFormatELL:
+    // Allocate matrix.
+    convertToMatrixELL();
+    break;
+  }
 
   allocateK();
   // Init k so that the solution is (1, ..., 1)^T
@@ -104,26 +99,9 @@ void CG::init(const char *matrixFile) {
   // Start with (0, ..., 0)^T
   std::memset(x.get(), 0, sizeof(floatType) * N);
 
-  // Eventually transform the matrix into requested format.
-  switch (matrixFormat) {
-  case MatrixFormatCRS:
-    // Allocate matrix.
-    matrixCRS.reset(new MatrixCRS(N, nz));
-    allocateMatrixCRS();
-
-    // Copy data and release matrixCOO which is not needed anymore.
-    matrixCRS->fillFromCOO(*matrixCOO);
+  if (matrixFormat != MatrixFormatCOO) {
+    // Release matrixCOO which is not needed anymore.
     matrixCOO.reset();
-    break;
-  case MatrixFormatELL:
-    // Allocate matrix.
-    matrixELL.reset(new MatrixELL(N, nz, matrixCOO->getMaxNz()));
-    allocateMatrixELL();
-
-    // Copy data and release matrixCOO which is not needed anymore.
-    matrixELL->fillFromCOO(*matrixCOO);
-    matrixCOO.reset();
-    break;
   }
 }
 
