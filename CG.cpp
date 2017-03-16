@@ -112,6 +112,8 @@ void CG::init(const char *matrixFile) {
 }
 
 // #define DEBUG_SOLVE
+/// Based on "Methods of Conjugate Gradients for Solving Linear Systems"
+/// (http://nvlpubs.nist.gov/nistpubs/jres/049/jresv49n6p409_A1b.pdf)
 void CG::solve() {
   std::cout << "Solving..." << std::endl;
   auto start = now();

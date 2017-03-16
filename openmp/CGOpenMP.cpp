@@ -4,6 +4,7 @@
 #include "../CG.h"
 #include "../Matrix.h"
 
+/// Class implementing parallel kernels with OpenMP.
 class CGOpenMP : public CG {
   struct MatrixCRSOpenMP : MatrixCRS {
     MatrixCRSOpenMP(const MatrixCOO &coo) : MatrixCRS(coo) {}

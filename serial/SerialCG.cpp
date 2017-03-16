@@ -4,6 +4,7 @@
 
 #include "../CG.h"
 
+/// Class imlementing serial kernels.
 class SerialCG : public CG {
   std::unique_ptr<floatType[]> p;
   std::unique_ptr<floatType[]> q;
