@@ -6,6 +6,7 @@
 #include <iostream>
 #include <locale>
 #include <memory>
+#include <sstream>
 
 #include "CG.h"
 #include "Matrix.h"
@@ -71,22 +72,27 @@ void CG::parseEnvironment() {
 }
 
 void CG::init(const char *matrixFile) {
+  std::cout << "Reading matrix from " << matrixFile << "..." << std::endl;
+  auto startIO = now();
   matrixCOO.reset(new MatrixCOO(matrixFile));
   // Copy over size of read matrix.
   N = matrixCOO->N;
   nz = matrixCOO->nz;
 
   // Eventually transform the matrix into requested format.
+  auto startConverting = now();
   switch (matrixFormat) {
   case MatrixFormatCRS:
-    // Allocate matrix.
+    std::cout << "Converting matrix to CRS format..." << std::endl;
     convertToMatrixCRS();
     break;
   case MatrixFormatELL:
-    // Allocate matrix.
+    std::cout << "Converting matrix to ELL format..." << std::endl;
     convertToMatrixELL();
     break;
   }
+  timing.converting = now() - startConverting;
+  timing.io = now() - startIO;
 
   allocateK();
   // Init k so that the solution is (1, ..., 1)^T
@@ -107,6 +113,7 @@ void CG::init(const char *matrixFile) {
 
 // #define DEBUG_SOLVE
 void CG::solve() {
+  std::cout << "Solving..." << std::endl;
   auto start = now();
 
   floatType r2, r2_old;
@@ -173,7 +180,7 @@ void CG::solve() {
     xpay(VectorR, b, VectorP);
   }
 
-  timing.total = now() - start;
+  timing.solve = now() - start;
 }
 
 const int maxLabelWidth = 20;
@@ -184,15 +191,24 @@ void CG::printPadded(const char *label, const std::string &value) {
 
 const int printX = 10;
 void CG::printSummary() {
-  std::cout << "x = [ ";
+  std::cout << std::endl << "x = [ ";
   for (int i = 0; i < printX && i < N; i++) {
     std::cout << x[i] << " ";
   }
   std::cout << "]" << std::endl;
 
   printPadded("Iterations:", std::to_string(iteration));
-  printPadded("Residual:", std::to_string(residual));
+  std::ostringstream oss;
+  oss << std::scientific << residual;
+  printPadded("Residual:", oss.str());
 
+  std::cout << std::endl;
+  printPadded("IO time:", std::to_string(timing.io.count()));
+  if (matrixFormat != MatrixFormatCOO) {
+    printPadded("Converting time:", std::to_string(timing.converting.count()));
+  }
+
+  printPadded("Solve time:", std::to_string(timing.solve.count()));
   double matvecTime = timing.matvec.count();
   printPadded("MatVec time:", std::to_string(matvecTime));
 
@@ -203,7 +219,6 @@ void CG::printSummary() {
   printPadded("axpy time:", std::to_string(timing.axpy.count()));
   printPadded("xpay time:", std::to_string(timing.xpay.count()));
   printPadded("vectorDot time:", std::to_string(timing.xpay.count()));
-  printPadded("Total time:", std::to_string(timing.total.count()));
 }
 
 int main(int argc, char *argv[]) {

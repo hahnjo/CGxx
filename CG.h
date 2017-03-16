@@ -34,7 +34,9 @@ private:
     using clock = std::chrono::steady_clock;
     using duration = std::chrono::duration<double>;
 
-    duration total;
+    duration io;
+    duration converting;
+    duration solve;
     duration matvec;
     duration axpy;
     duration xpay;
