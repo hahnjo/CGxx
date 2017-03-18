@@ -9,6 +9,7 @@ class SerialCG : public CG {
   std::unique_ptr<floatType[]> p;
   std::unique_ptr<floatType[]> q;
   std::unique_ptr<floatType[]> r;
+  std::unique_ptr<floatType[]> z;
 
   floatType *getVector(Vector v) {
     switch (v) {
@@ -22,6 +23,8 @@ class SerialCG : public CG {
       return q.get();
     case VectorR:
       return r.get();
+    case VectorZ:
+      return z.get();
     }
     assert(0 && "Invalid value of v!");
     return nullptr;
@@ -30,6 +33,9 @@ class SerialCG : public CG {
   virtual bool supportsMatrixFormat(MatrixFormat format) override {
     return format == MatrixFormatCOO || format == MatrixFormatCRS ||
            format == MatrixFormatELL;
+  }
+  virtual bool supportsPreconditioner(Preconditioner preconditioner) override {
+    return preconditioner == PreconditionerJacobi;
   }
 
   virtual void init(const char *matrixFile) override;
@@ -45,8 +51,12 @@ class SerialCG : public CG {
   virtual void xpayKernel(Vector _x, floatType a, Vector _y) override;
   virtual floatType vectorDotKernel(Vector _a, Vector _b) override;
 
+  void applyPreconditionerKernelJacobi(floatType *x, floatType *y);
+
+  virtual void applyPreconditionerKernel(Vector _x, Vector _y) override;
+
 public:
-  SerialCG() : CG(MatrixFormatCRS) {}
+  SerialCG() : CG(MatrixFormatCRS, PreconditionerJacobi) {}
 };
 
 void SerialCG::init(const char *matrixFile) {
@@ -55,6 +65,9 @@ void SerialCG::init(const char *matrixFile) {
   p.reset(new floatType[N]);
   q.reset(new floatType[N]);
   r.reset(new floatType[N]);
+  if (preconditioner != PreconditionerNone) {
+    z.reset(new floatType[N]);
+  }
 }
 
 void SerialCG::cpy(Vector _dst, Vector _src) {
@@ -137,6 +150,25 @@ floatType SerialCG::vectorDotKernel(Vector _a, Vector _b) {
   }
 
   return res;
+}
+
+void SerialCG::applyPreconditionerKernelJacobi(floatType *x, floatType *y) {
+  for (int i = 0; i < N; i++) {
+    y[i] = jacobi->C[i] * x[i];
+  }
+}
+
+void SerialCG::applyPreconditionerKernel(Vector _x, Vector _y) {
+  floatType *x = getVector(_x);
+  floatType *y = getVector(_y);
+
+  switch (preconditioner) {
+  case PreconditionerJacobi:
+    applyPreconditionerKernelJacobi(x, y);
+    break;
+  default:
+    assert(0 && "Invalid preconditioner!");
+  }
 }
 
 CG *CG::getInstance() { return new SerialCG; }

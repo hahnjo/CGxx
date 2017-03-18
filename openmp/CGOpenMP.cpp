@@ -3,6 +3,7 @@
 
 #include "../CG.h"
 #include "../Matrix.h"
+#include "../Preconditioner.h"
 
 /// Class implementing parallel kernels with OpenMP.
 class CGOpenMP : public CG {
@@ -18,10 +19,16 @@ class CGOpenMP : public CG {
     virtual void allocateLength() override;
     virtual void allocateIndexAndData() override;
   };
+  struct JacobiOpenMP : Jacobi {
+    JacobiOpenMP(const MatrixCOO &coo) : Jacobi(coo) {}
+
+    virtual void allocateC(int N) override;
+  };
 
   std::unique_ptr<floatType[]> p;
   std::unique_ptr<floatType[]> q;
   std::unique_ptr<floatType[]> r;
+  std::unique_ptr<floatType[]> z;
 
   floatType *getVector(Vector v) {
     switch (v) {
@@ -35,6 +42,8 @@ class CGOpenMP : public CG {
       return q.get();
     case VectorR:
       return r.get();
+    case VectorZ:
+      return z.get();
     }
     assert(0 && "Invalid value of v!");
     return nullptr;
@@ -42,6 +51,9 @@ class CGOpenMP : public CG {
 
   virtual bool supportsMatrixFormat(MatrixFormat format) override {
     return format == MatrixFormatCRS || format == MatrixFormatELL;
+  }
+  virtual bool supportsPreconditioner(Preconditioner preconditioner) override {
+    return preconditioner == PreconditionerJacobi;
   }
 
   virtual void init(const char *matrixFile) override;
@@ -52,6 +64,8 @@ class CGOpenMP : public CG {
   virtual void convertToMatrixELL() override {
     matrixELL.reset(new MatrixELLOpenMP(*matrixCOO));
   }
+
+  virtual void initJacobi() { jacobi.reset(new JacobiOpenMP(*matrixCOO)); }
 
   virtual void allocateK() override;
   virtual void allocateX() override;
@@ -66,8 +80,12 @@ class CGOpenMP : public CG {
   virtual void xpayKernel(Vector _x, floatType a, Vector _y) override;
   virtual floatType vectorDotKernel(Vector _a, Vector _b) override;
 
+  void applyPreconditionerKernelJacobi(floatType *x, floatType *y);
+
+  virtual void applyPreconditionerKernel(Vector _x, Vector _y) override;
+
 public:
-  CGOpenMP() : CG(MatrixFormatCRS) {}
+  CGOpenMP() : CG(MatrixFormatCRS, PreconditionerJacobi) {}
 };
 
 void CGOpenMP::MatrixCRSOpenMP::allocatePtr() {
@@ -113,18 +131,33 @@ void CGOpenMP::MatrixELLOpenMP::allocateIndexAndData() {
   }
 }
 
+void CGOpenMP::JacobiOpenMP::allocateC(int N) {
+  Jacobi::allocateC(N);
+
+#pragma omp parallel for
+  for (int i = 0; i < N; i++) {
+    C[i] = 0.0;
+  }
+}
+
 void CGOpenMP::init(const char *matrixFile) {
   CG::init(matrixFile);
 
   p.reset(new floatType[N]);
   q.reset(new floatType[N]);
   r.reset(new floatType[N]);
+  if (preconditioner != PreconditionerNone) {
+    z.reset(new floatType[N]);
+  }
 
 #pragma omp parallel for
   for (int i = 0; i < N; i++) {
     p[i] = 0.0;
     q[i] = 0.0;
     r[i] = 0.0;
+    if (preconditioner != PreconditionerNone) {
+      z[i] = 0.0;
+    }
   }
 }
 
@@ -226,6 +259,26 @@ floatType CGOpenMP::vectorDotKernel(Vector _a, Vector _b) {
   }
 
   return res;
+}
+
+void CGOpenMP::applyPreconditionerKernelJacobi(floatType *x, floatType *y) {
+#pragma omp parallel for
+  for (int i = 0; i < N; i++) {
+    y[i] = jacobi->C[i] * x[i];
+  }
+}
+
+void CGOpenMP::applyPreconditionerKernel(Vector _x, Vector _y) {
+  floatType *x = getVector(_x);
+  floatType *y = getVector(_y);
+
+  switch (preconditioner) {
+  case PreconditionerJacobi:
+    applyPreconditionerKernelJacobi(x, y);
+    break;
+  default:
+    assert(0 && "Invalid preconditioner!");
+  }
 }
 
 CG *CG::getInstance() { return new CGOpenMP; }

@@ -1,10 +1,12 @@
 #ifndef CG_H
 #define CG_H
 
+#include <cassert>
 #include <chrono>
 #include <memory>
 
 #include "Matrix.h"
+#include "Preconditioner.h"
 #include "def.h"
 
 /// @brief The base class implementing the conjugate gradients method.
@@ -25,6 +27,8 @@ public:
     VectorQ,
     /// Temporary vector for the residual.
     VectorR,
+    /// Temporary vector in use with the preconditioner.
+    VectorZ,
   };
 
   /// Different formats used to store the sparse matrix.
@@ -35,6 +39,14 @@ public:
     MatrixFormatCRS,
     /// %Matrix is represented by CG#matrixELL.
     MatrixFormatELL,
+  };
+
+  /// Different preconditioners to use.
+  enum Preconditioner {
+    /// Use no preconditioner.
+    PreconditionerNone,
+    /// Use a Jacobi preconditioner.
+    PreconditionerJacobi,
   };
 
 private:
@@ -57,6 +69,7 @@ private:
     duration axpy;
     duration xpay;
     duration vectorDot;
+    duration preconditioner;
   };
   Timing timing;
 
@@ -89,6 +102,12 @@ private:
     return res;
   }
 
+  void applyPreconditioner(Vector x, Vector y) {
+    time_point start = now();
+    applyPreconditionerKernel(x, y);
+    timing.preconditioner += now() - start;
+  }
+
 protected:
   /// Dimension of the matrix.
   int N;
@@ -104,6 +123,11 @@ protected:
   /// Matrix in ELLPACK format.
   std::unique_ptr<MatrixELL> matrixELL;
 
+  /// The preconditioner to use.
+  Preconditioner preconditioner = PreconditionerNone;
+  /// Jacobi preconditioner.
+  std::unique_ptr<Jacobi> jacobi;
+
   /// #VectorK
   std::unique_ptr<floatType[]> k;
   /// #VectorX
@@ -111,9 +135,18 @@ protected:
 
   /// Construct a new object with a \a defaultMatrixFormat to store the matrix.
   CG(MatrixFormat defaultMatrixFormat) : matrixFormat(defaultMatrixFormat) {}
+  /// Construct a new object with a \a defaultMatrixFormat to store tha matrix
+  /// and a \a defaultPreconditioner to use.
+  CG(MatrixFormat defaultMatrixFormat, Preconditioner defaultPreconditioner)
+      : matrixFormat(defaultMatrixFormat),
+        preconditioner(defaultPreconditioner) {}
 
   /// @return \a true if this implementation supports \a format to store the matrix.
   virtual bool supportsMatrixFormat(MatrixFormat format) = 0;
+  /// @return \a true if this implementation supports the \a preconditioner.
+  virtual bool supportsPreconditioner(Preconditioner preconditioner) {
+    return false;
+  }
 
   /// Convert to MatrixCRS.
   virtual void convertToMatrixCRS() {
@@ -123,6 +156,9 @@ protected:
   virtual void convertToMatrixELL() {
     matrixELL.reset(new MatrixELL(*matrixCOO));
   }
+
+  /// Initialize the Jacobi preconditioner.
+  virtual void initJacobi() { jacobi.reset(new Jacobi(*matrixCOO)); }
 
   /// Allocate #k.
   virtual void allocateK() { k.reset(new floatType[N]); }
@@ -139,6 +175,11 @@ protected:
   virtual void xpayKernel(Vector _x, floatType a, Vector _y) = 0;
   /// @return vector dot product <\a _a, \a _b>
   virtual floatType vectorDotKernel(Vector _a, Vector _b) = 0;
+
+  /// \a _y = B * \a _x
+  virtual void applyPreconditionerKernel(Vector _x, Vector _y) {
+    assert(0 && "Preconditioner not implemented!");
+  }
 
   /// Print \a label (padded to a constant number of characters) and \a value.
   static void printPadded(const char *label, const std::string &value);

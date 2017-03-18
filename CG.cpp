@@ -19,6 +19,10 @@ const char *CG_MATRIX_FORMAT_COO = "COO";
 const char *CG_MATRIX_FORMAT_CRS = "CRS";
 const char *CG_MATRIX_FORMAT_ELL = "ELL";
 
+const char *CG_PRECONDITIONER = "CG_PRECONDITIONER";
+const char *CG_PRECONDITIONER_NONE = "none";
+const char *CG_PRECONDITIONER_JACOBI = "jacobi";
+
 void CG::parseEnvironment() {
   const char *env;
   char *endptr;
@@ -69,6 +73,30 @@ void CG::parseEnvironment() {
       std::exit(1);
     }
   }
+
+  env = std::getenv(CG_PRECONDITIONER);
+  if (env != NULL && *env != 0) {
+    std::string lower(env);
+    std::transform(lower.begin(), lower.end(), lower.begin(),
+                   [](char c) { return std::tolower(c); });
+
+    if (lower == CG_PRECONDITIONER_NONE) {
+      preconditioner = PreconditionerNone;
+    } else if (lower == CG_PRECONDITIONER_JACOBI) {
+      preconditioner = PreconditionerJacobi;
+    } else {
+      std::cerr << "Invalid value for " << CG_PRECONDITIONER << "! ("
+                << CG_PRECONDITIONER_NONE << ", or " << CG_PRECONDITIONER_JACOBI
+                << ")" << std::endl;
+      std::exit(1);
+    }
+
+    if (preconditioner != PreconditionerNone &&
+        !supportsPreconditioner(preconditioner)) {
+      std::cerr << "No support for this preconditioner!" << std::endl;
+      std::exit(1);
+    }
+  }
 }
 
 void CG::init(const char *matrixFile) {
@@ -91,6 +119,14 @@ void CG::init(const char *matrixFile) {
     convertToMatrixELL();
     break;
   }
+
+  switch (preconditioner) {
+  case PreconditionerJacobi:
+    std::cout << "Initializing Jacobi preconditioner..." << std::endl;
+    initJacobi();
+    break;
+  }
+
   timing.converting = now() - startConverting;
   timing.io = now() - startIO;
 
@@ -114,27 +150,48 @@ void CG::init(const char *matrixFile) {
 // #define DEBUG_SOLVE
 /// Based on "Methods of Conjugate Gradients for Solving Linear Systems"
 /// (http://nvlpubs.nist.gov/nistpubs/jres/049/jresv49n6p409_A1b.pdf)
+///
+/// Efficient preconditioning is partly based on the following two documents:
+///  - http://journals.sagepub.com/doi/pdf/10.1177/109434208700100106
+///  - http://www.netlib.org/templates/templates.pdf
 void CG::solve() {
   std::cout << "Solving..." << std::endl;
   auto start = now();
 
-  floatType r2, r2_old;
-  floatType nrm2_0, nrm2;
+  floatType rho, rho_old;
+  floatType r2, nrm2_0;
   floatType dot_pq;
   floatType a, b;
 
-  // p(0) = r(0) = k - Ax(0) (3:1a)
+  // r(0) = k - Ax(0) (part of (3:1a))
   matvec(VectorX, VectorR);
   xpay(VectorK, -1.0, VectorR);
-  cpy(VectorP, VectorR);
 
-  // r2(0) = |r(0)|^2 (for (3:1b) and (3:1e))
+  if (preconditioner == PreconditionerNone) {
+    // p(0) = r(0) (part of (3:1a))
+    cpy(VectorP, VectorR);
+  } else {
+    // p(0) = B * r(0) (10:4)
+    applyPreconditioner(VectorR, VectorP);
+  }
+
   r2 = vectorDot(VectorR, VectorR);
 #ifdef DEBUG_SOLVE
   std::cout << "r2 = " << r2 << std::endl;
 #endif
 
-  nrm2 = std::sqrt(r2);
+  nrm2_0 = std::sqrt(r2);
+
+  if (preconditioner == PreconditionerNone) {
+    // rho(0) = |r(0)|^2 (for (3:1b) and (3:1e))
+    rho = r2;
+  } else {
+    // rho(0) = <p(0), r(0)> (for (3:1b) and (3:1e), modified with (10:4))
+    rho = vectorDot(VectorP, VectorR);
+  }
+#ifdef DEBUG_SOLVE
+  std::cout << "rho = " << rho << std::endl;
+#endif
 
   for (iteration = 0; iteration < maxIterations; iteration++) {
     // q(i) = A * p(i) (for (3:1b) and (3:1d))
@@ -147,7 +204,7 @@ void CG::solve() {
 #endif
 
     // a(i) = rho(i) / dot_pq (3:1b)
-    a = r2 / dot_pq;
+    a = rho / dot_pq;
 #ifdef DEBUG_SOLVE
     std::cout << "a = " << a << std::endl;
 #endif
@@ -157,35 +214,50 @@ void CG::solve() {
     // r(i + 1) = r(i) - a * q(i) (3:1d)
     axpy(-a, VectorQ, VectorR);
 
-    r2_old = r2;
-    // r2(i + 1) = |r(i + 1)|^2 (for (3:1b) and (3:1e))
     r2 = vectorDot(VectorR, VectorR);
 #ifdef DEBUG_SOLVE
     std::cout << "r2 = " << r2 << std::endl;
 #endif
 
     // Check convergence with relative residual.
-    residual = std::sqrt(r2) / nrm2;
+    residual = std::sqrt(r2) / nrm2_0;
     if (residual <= tolerance) {
       // We have (at least partly) done this iteration...
       iteration++;
       break;
     }
 
-    // b(i) = |r(i + 1)|^2 / |r(i)|^2 (3:1e)
-    b = r2 / r2_old;
+    rho_old = rho;
+    if (preconditioner == PreconditionerNone) {
+      // rho(i + 1) = <r(i + 1), r(i + 1)> (for (3:1b) and (3:1e))
+      rho = r2;
+    } else {
+      // z(i + 1) = B * r(i + 1)
+      applyPreconditioner(VectorR, VectorZ);
+
+      // rho(i + 1) = <r(i + 1), z(i + 1)> ((10:4); for (3:1b) and (3:1e))
+      rho = vectorDot(VectorR, VectorZ);
+    }
+
+    // b(i) = rho(i + 1) / rho(i) (3:1e)
+    b = rho / rho_old;
 #ifdef DEBUG_SOLVE
     std::cout << "b = " << b << std::endl;
 #endif
 
-    // p(i + 1) = r(i + 1) + b(i) * p(i) (3:1f)
-    xpay(VectorR, b, VectorP);
+    if (preconditioner == PreconditionerNone) {
+      // p(i + 1) = r(i + 1) + b(i) * p(i) (3:1f)
+      xpay(VectorR, b, VectorP);
+    } else {
+      // p(i + 1) = z(i + 1) + b(i) * p(i)
+      xpay(VectorZ, b, VectorP);
+    }
   }
 
   timing.solve = now() - start;
 }
 
-const int maxLabelWidth = 20;
+const int maxLabelWidth = 22;
 void CG::printPadded(const char *label, const std::string &value) {
   std::cout << std::left << std::setw(maxLabelWidth) << label;
   std::cout << value << std::endl;
@@ -204,9 +276,36 @@ void CG::printSummary() {
   oss << std::scientific << residual;
   printPadded("Residual:", oss.str());
 
+  std::string matrixFormatName;
+  switch (matrixFormat) {
+  case MatrixFormatCOO:
+    matrixFormatName = "COO";
+    break;
+  case MatrixFormatCRS:
+    matrixFormatName = "CRS";
+    break;
+  case MatrixFormatELL:
+    matrixFormatName = "ELL";
+    break;
+  }
+  assert(matrixFormatName.length() > 0);
+  printPadded("Matrix format:", matrixFormatName);
+
+  std::string preconditionerName;
+  switch (preconditioner) {
+  case PreconditionerNone:
+    preconditionerName = "None";
+    break;
+  case PreconditionerJacobi:
+    preconditionerName = "Jacobi";
+    break;
+  }
+  assert(preconditionerName.length() > 0);
+  printPadded("Preconditioner:", preconditionerName);
+
   std::cout << std::endl;
   printPadded("IO time:", std::to_string(timing.io.count()));
-  if (matrixFormat != MatrixFormatCOO) {
+  if (matrixFormat != MatrixFormatCOO || preconditioner != PreconditionerNone) {
     printPadded("Converting time:", std::to_string(timing.converting.count()));
   }
 
@@ -221,6 +320,10 @@ void CG::printSummary() {
   printPadded("axpy time:", std::to_string(timing.axpy.count()));
   printPadded("xpay time:", std::to_string(timing.xpay.count()));
   printPadded("vectorDot time:", std::to_string(timing.xpay.count()));
+  if (preconditioner != PreconditionerNone) {
+    printPadded("Preconditioner time:",
+                std::to_string(timing.preconditioner.count()));
+  }
 }
 
 int main(int argc, char *argv[]) {

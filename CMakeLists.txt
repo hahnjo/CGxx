@@ -18,6 +18,7 @@ endif()
 add_library(common OBJECT
   CG.cpp
   Matrix.cpp
+  Preconditioner.cpp
   mmio.c
 )
 
