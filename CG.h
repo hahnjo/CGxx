@@ -64,6 +64,9 @@ private:
 
     duration io;
     duration converting;
+    duration transferTo;
+    duration transferFrom;
+
     duration solve;
     duration matvec;
     duration axpy;
@@ -165,6 +168,11 @@ protected:
   /// Allocate #x.
   virtual void allocateX() { x.reset(new floatType[N]); }
 
+  /// Do transfer data before calling #solve().
+  virtual void doTransferTo() {}
+  /// Do transfer data after calling #solve().
+  virtual void doTransferFrom() {}
+
   /// Copy vector \a _src to \a _dst.
   virtual void cpy(Vector _dst, Vector _src) = 0;
   /// \a _y = A * \a _x.
@@ -190,8 +198,24 @@ public:
   /// Init data by reading matrix from \a matrixFile.
   virtual void init(const char *matrixFile);
 
+  /// @return true if this implementation needs to transfer data for solving.
+  virtual bool needsTransfer() { return false; }
+  /// Transfer data before calling #solve().
+  void transferTo() {
+    auto start = now();
+    doTransferTo();
+    timing.transferTo = now() - start;
+  }
+
   /// Solve sparse equation system.
   void solve();
+
+  /// Transfer data after calling #solve().
+  void transferFrom() {
+    auto start = now();
+    doTransferFrom();
+    timing.transferFrom = now() - start;
+  }
 
   /// Print summary after system has been solved.
   virtual void printSummary();

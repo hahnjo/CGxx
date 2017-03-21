@@ -22,5 +22,6 @@ add_library(common OBJECT
   mmio.c
 )
 
+add_subdirectory(openacc)
 add_subdirectory(openmp)
 add_subdirectory(serial)

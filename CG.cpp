@@ -156,7 +156,7 @@ void CG::init(const char *matrixFile) {
 ///  - http://www.netlib.org/templates/templates.pdf
 void CG::solve() {
   std::cout << "Solving..." << std::endl;
-  auto start = now();
+  time_point start = now();
 
   floatType rho, rho_old;
   floatType r2, nrm2_0;
@@ -308,6 +308,11 @@ void CG::printSummary() {
   if (matrixFormat != MatrixFormatCOO || preconditioner != PreconditionerNone) {
     printPadded("Converting time:", std::to_string(timing.converting.count()));
   }
+  if (needsTransfer()) {
+    printPadded("Transfer to time:", std::to_string(timing.transferTo.count()));
+    printPadded("Transfer from time:",
+                std::to_string(timing.transferFrom.count()));
+  }
 
   printPadded("Solve time:", std::to_string(timing.solve.count()));
   double matvecTime = timing.matvec.count();
@@ -336,7 +341,13 @@ int main(int argc, char *argv[]) {
   cg->parseEnvironment();
   cg->init(argv[1]);
 
+  if (cg->needsTransfer()) {
+    cg->transferTo();
+  }
   cg->solve();
+  if (cg->needsTransfer()) {
+    cg->transferFrom();
+  }
 
   cg->printSummary();
 
