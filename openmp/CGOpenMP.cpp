@@ -65,7 +65,9 @@ class CGOpenMP : public CG {
     matrixELL.reset(new MatrixELLOpenMP(*matrixCOO));
   }
 
-  virtual void initJacobi() { jacobi.reset(new JacobiOpenMP(*matrixCOO)); }
+  virtual void initJacobi() override {
+    jacobi.reset(new JacobiOpenMP(*matrixCOO));
+  }
 
   virtual void allocateK() override;
   virtual void allocateX() override;

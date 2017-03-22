@@ -110,6 +110,9 @@ void CG::init(const char *matrixFile) {
   // Eventually transform the matrix into requested format.
   auto startConverting = now();
   switch (matrixFormat) {
+  case MatrixFormatCOO:
+    // Nothing to be done.
+    break;
   case MatrixFormatCRS:
     std::cout << "Converting matrix to CRS format..." << std::endl;
     convertToMatrixCRS();
@@ -121,6 +124,9 @@ void CG::init(const char *matrixFile) {
   }
 
   switch (preconditioner) {
+  case PreconditionerNone:
+    // Nothing to be done.
+    break;
   case PreconditionerJacobi:
     std::cout << "Initializing Jacobi preconditioner..." << std::endl;
     initJacobi();
