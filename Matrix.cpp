@@ -51,6 +51,7 @@ MatrixCOO::MatrixCOO(const char *file) {
   J.reset(new int[nz]);
   V.reset(new floatType[nz]);
   nzPerRow.reset(new int[N]);
+  std::memset(nzPerRow.get(), 0, sizeof(int) * N);
 
   // Read matrix.
   for (int i = 0; i < nz; i++) {

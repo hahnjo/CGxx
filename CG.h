@@ -62,17 +62,17 @@ private:
     using clock = std::chrono::steady_clock;
     using duration = std::chrono::duration<double>;
 
-    duration io;
-    duration converting;
-    duration transferTo;
-    duration transferFrom;
+    duration io{0};
+    duration converting{0};
+    duration transferTo{0};
+    duration transferFrom{0};
 
-    duration solve;
-    duration matvec;
-    duration axpy;
-    duration xpay;
-    duration vectorDot;
-    duration preconditioner;
+    duration solve{0};
+    duration matvec{0};
+    duration axpy{0};
+    duration xpay{0};
+    duration vectorDot{0};
+    duration preconditioner{0};
   };
   Timing timing;
 
