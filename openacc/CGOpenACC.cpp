@@ -59,7 +59,7 @@ class CGOpenACC : public CG {
   virtual void applyPreconditionerKernel(Vector _x, Vector _y) override;
 
 public:
-  CGOpenACC() : CG(MatrixFormatCRS, PreconditionerJacobi) {}
+  CGOpenACC() : CG(MatrixFormatELL, PreconditionerJacobi) {}
 };
 
 void CGOpenACC::init(const char *matrixFile) {
