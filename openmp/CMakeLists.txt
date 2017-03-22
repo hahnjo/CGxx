@@ -7,3 +7,13 @@ if (OPENMP_FOUND)
     CGOpenMP.cpp
   )
 endif()
+
+
+find_package(OpenMPTarget)
+
+if (OPENMPTARGET_FOUND)
+  set(CMAKE_CXX_FLAGS "${OPENMP_TARGET_FLAGS} ${CMAKE_CXX_FLAGS}")
+  add_executable(cg_omp_target $<TARGET_OBJECTS:common>
+    CGOpenMPTarget.cpp
+  )
+endif()
