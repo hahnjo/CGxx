@@ -38,11 +38,10 @@
 extern "C" {
 #endif
 
+        #include "cl.h"
+
 #ifdef __APPLE__
-        #include <OpenCL/cl.h>
     #include <AvailabilityMacros.h>
-#else
-        #include <CL/cl.h>
 #endif
 
 /* cl_khr_fp16 extension - no extension #define since it has no functions  */
