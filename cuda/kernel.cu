@@ -1,0 +1,142 @@
+#include "kernel.h"
+
+// https://devblogs.nvidia.com/parallelforall/cuda-pro-tip-write-flexible-kernels-grid-stride-loops/
+
+__global__ void matvecKernelCRS(int *ptr, int *index, floatType *value,
+                                floatType *x, floatType *y, int N) {
+  for (int i = blockIdx.x * blockDim.x + threadIdx.x; i < N;
+       i += blockDim.x * gridDim.x) {
+    floatType tmp = 0;
+    for (int j = ptr[i]; j < ptr[i + 1]; j++) {
+      tmp += value[j] * x[index[j]];
+    }
+    y[i] = tmp;
+  }
+}
+
+__global__ void matvecKernelELL(int *length, int *index, floatType *data,
+                                floatType *x, floatType *y, int N) {
+  for (int i = blockIdx.x * blockDim.x + threadIdx.x; i < N;
+       i += blockDim.x * gridDim.x) {
+    floatType tmp = 0;
+    for (int j = 0; j < length[i]; j++) {
+      int k = j * N + i;
+      tmp += data[k] * x[index[k]];
+    }
+    y[i] = tmp;
+  }
+}
+
+__global__ void axpyKernelCUDA(floatType a, floatType *x, floatType *y, int N) {
+  for (int i = blockIdx.x * blockDim.x + threadIdx.x; i < N;
+       i += blockDim.x * gridDim.x) {
+    y[i] = a * x[i] + y[i];
+  }
+}
+
+__global__ void xpayKernelCUDA(floatType *x, floatType a, floatType *y, int N) {
+  for (int i = blockIdx.x * blockDim.x + threadIdx.x; i < N;
+       i += blockDim.x * gridDim.x) {
+    y[i] = x[i] + a * y[i];
+  }
+}
+
+// based on
+// https://devblogs.nvidia.com/parallelforall/faster-parallel-reductions-kepler/
+// -----------------------------------------------------------------------------
+#if __CUDA_ARCH__ >= 350
+__inline__ __device__ floatType warpReduceSum(floatType val) {
+  for (int offset = warpSize / 2; offset > 0; offset /= 2) {
+    val += __shfl_down(val, offset);
+  }
+  return val;
+}
+#else
+__inline__ __device__ floatType warpReduceSum(floatType val) {
+  // This makes shared point to the beginning of the shared memory which
+  // has max(threads, blockReduction) elements, ie is large enough.
+  // Warning: This uses the same memory as blockReduceSum, which should
+  //          be fine at the moment.
+  extern __shared__ floatType shared[];
+  int tid = threadIdx.x;
+  int lane = tid % warpSize;
+
+  shared[tid] = val;
+  __syncthreads();
+
+  for (int offset = warpSize / 2; offset > 0; offset /= 2) {
+    if (lane < offset) {
+      shared[tid] += shared[tid + offset];
+    }
+    __syncthreads();
+  }
+
+  return shared[tid];
+}
+#endif
+
+__inline__ __device__ floatType blockReduceSum(floatType val) {
+  // Shared mem for partial sums
+  static __shared__ floatType shared[BlockReduction];
+  int lane = threadIdx.x % warpSize;
+  int wid = threadIdx.x / warpSize;
+
+  // Each warp performs partial reduction.
+  val = warpReduceSum(val);
+
+  // Write reduced value to shared memory.
+  if (lane == 0) {
+    shared[wid] = val;
+  }
+
+  // Wait for all partial reductions.
+  __syncthreads();
+
+  // Read from shared memory only if that warp existed.
+  val = (threadIdx.x < blockDim.x / warpSize) ? shared[lane] : 0;
+
+  // Final reduce within first warp.
+  if (wid == 0) {
+    val = warpReduceSum(val);
+  }
+
+  return val;
+}
+
+__global__ void deviceReduceKernel(floatType *in, floatType *out, int N) {
+  floatType sum = 0;
+  // Reduce multiple elements per thread.
+  for (int i = blockIdx.x * blockDim.x + threadIdx.x; i < N;
+       i += blockDim.x * gridDim.x) {
+    sum += in[i];
+  }
+
+  sum = blockReduceSum(sum);
+
+  if (threadIdx.x == 0) {
+    out[blockIdx.x] = sum;
+  }
+}
+// -----------------------------------------------------------------------------
+
+__global__ void vectorDotKernelCUDA(floatType *a, floatType *b, floatType *tmp,
+                                    int N) {
+  floatType sum = 0;
+  for (int i = blockIdx.x * blockDim.x + threadIdx.x; i < N;
+       i += blockDim.x * gridDim.x) {
+    sum += a[i] * b[i];
+  }
+  sum = blockReduceSum(sum);
+
+  if (threadIdx.x == 0) {
+    tmp[blockIdx.x] = sum;
+  }
+}
+
+__global__ void applyPreconditionerKernelJacobi(floatType *C, floatType *x,
+                                                floatType *y, int N) {
+  for (int i = blockIdx.x * blockDim.x + threadIdx.x; i < N;
+       i += blockDim.x * gridDim.x) {
+    y[i] = C[i] * x[i];
+  }
+}
