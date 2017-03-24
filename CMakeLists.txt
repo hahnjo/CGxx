@@ -24,5 +24,6 @@ add_library(common OBJECT
 
 add_subdirectory(cuda)
 add_subdirectory(openacc)
+add_subdirectory(opencl)
 add_subdirectory(openmp)
 add_subdirectory(serial)
