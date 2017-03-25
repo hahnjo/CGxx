@@ -1,3 +1,7 @@
+if ("${CMAKE_C_COMPILER_ID}" STREQUAL "Clang")
+  return()
+endif()
+
 find_package(CUDA)
 
 if (CUDA_FOUND)
