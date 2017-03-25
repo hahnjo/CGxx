@@ -65,12 +65,7 @@ class CGCUDA : public CG {
     return preconditioner == PreconditionerJacobi;
   }
 
-  virtual void init(const char *matrixFile) override {
-    CG::init(matrixFile);
-
-    blocks = min((N + Threads - 1) / Threads, MaxBlocks);
-    blocksMatvec = min((N + Threads - 1) / Threads, MaxBlocksMatvec);
-  }
+  virtual void init(const char *matrixFile) override;
 
   virtual bool needsTransfer() override { return true; }
   virtual void doTransferTo() override;
@@ -114,6 +109,16 @@ static inline void checkedMemcpyToDevice(void *dst, const void *src,
 }
 
 static inline void checkedFree(void *devPtr) { checkError(cudaFree(devPtr)); }
+
+void CGCUDA::init(const char *matrixFile) {
+  // Set the device for initialization.
+  checkError(cudaSetDevice(0));
+
+  CG::init(matrixFile);
+
+  blocks = min((N + Threads - 1) / Threads, MaxBlocks);
+  blocksMatvec = min((N + Threads - 1) / Threads, MaxBlocksMatvec);
+}
 
 void CGCUDA::doTransferTo() {
   // Allocate memory on the device and transfer necessary data.

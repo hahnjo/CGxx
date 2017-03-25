@@ -1,6 +1,8 @@
 #include <cassert>
 #include <memory>
 
+#include <openacc.h>
+
 #include "../CG.h"
 #include "../Matrix.h"
 #include "../Preconditioner.h"
@@ -63,6 +65,9 @@ public:
 };
 
 void CGOpenACC::init(const char *matrixFile) {
+  // First init the device.
+  acc_init(acc_get_device_type());
+
   CG::init(matrixFile);
 
   p.reset(new floatType[N]);

@@ -63,6 +63,10 @@ public:
 };
 
 void CGOpenMPTarget::init(const char *matrixFile) {
+  // Init the device with a simple target region.
+  #pragma omp target
+  { }
+
   CG::init(matrixFile);
 
   p.reset(new floatType[N]);
