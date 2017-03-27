@@ -31,7 +31,8 @@ class CGOpenCL : public CG {
 
   const size_t Local = 128;
   const size_t MaxGroups = 1024;
-  const size_t MaxGroupsMatvec = 32768;
+  // 65536 seems to not work on the Pascal nodes.
+  const size_t MaxGroupsMatvec = 65535;
   size_t groups;
   size_t global;
   size_t globalMatvec;
@@ -101,6 +102,7 @@ class CGOpenCL : public CG {
   void checkedFinish();
 
   void initDevice();
+  int getGroups(int maxGroups);
   virtual void init(const char *matrixFile) override;
 
   virtual bool needsTransfer() override { return true; }
@@ -211,6 +213,20 @@ void CGOpenCL::initDevice() {
   std::exit(1);
 }
 
+int CGOpenCL::getGroups(int maxGroups) {
+  int maxNeededGroups = (N + Local - 1) / Local;
+  int groups = maxNeededGroups, div = 2;
+
+  // We have grid-stride loops so it should be better if all groups receive
+  // roughly the same amount of work.
+  while (groups > maxGroups) {
+    groups = maxNeededGroups / div;
+    div++;
+  }
+
+  return groups;
+}
+
 void CGOpenCL::init(const char *matrixFile) {
   // First init the device and don't read matrix when there is none available.
   initDevice();
@@ -257,9 +273,9 @@ void CGOpenCL::init(const char *matrixFile) {
   // Now that we have a working device, read the matrix.
   CG::init(matrixFile);
 
-  groups = std::min((N + Local - 1) / Local, MaxGroups);
+  groups = getGroups(MaxGroups);
   global = groups * Local;
-  globalMatvec = std::min((N + Local - 1) / Local, MaxGroupsMatvec) * Local;
+  globalMatvec = getGroups(MaxGroupsMatvec) * Local;
 }
 
 void CGOpenCL::doTransferTo() {
