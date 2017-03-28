@@ -263,7 +263,7 @@ void CG::solve() {
   timing.solve = now() - start;
 }
 
-const int maxLabelWidth = 22;
+const int maxLabelWidth = 25;
 void CG::printPadded(const char *label, const std::string &value) {
   std::cout << std::left << std::setw(maxLabelWidth) << label;
   std::cout << value << std::endl;
@@ -281,6 +281,8 @@ void CG::printSummary() {
   std::ostringstream oss;
   oss << std::scientific << residual;
   printPadded("Residual:", oss.str());
+  printPadded("# rows / # nonzeros:",
+              std::to_string(N) + " / " + std::to_string(nz));
 
   std::string matrixFormatName;
   switch (matrixFormat) {
@@ -311,16 +313,29 @@ void CG::printSummary() {
 
   std::cout << std::endl;
   printPadded("IO time:", std::to_string(timing.io.count()));
+  double total = 0;
   if (matrixFormat != MatrixFormatCOO || preconditioner != PreconditionerNone) {
+    double converting = timing.converting.count();
     printPadded("Converting time:", std::to_string(timing.converting.count()));
-  }
-  if (needsTransfer()) {
-    printPadded("Transfer to time:", std::to_string(timing.transferTo.count()));
-    printPadded("Transfer from time:",
-                std::to_string(timing.transferFrom.count()));
+    total += converting;
   }
 
-  printPadded("Solve time:", std::to_string(timing.solve.count()));
+  if (needsTransfer()) {
+    double transferTo = timing.transferTo.count();
+    printPadded("Transfer to time:", std::to_string(timing.transferTo.count()));
+    total += transferTo;
+  }
+  double solve = timing.solve.count();
+  printPadded("Solve time:", std::to_string(solve));
+  total += solve;
+  if (needsTransfer()) {
+    double transferFrom = timing.transferFrom.count();
+    printPadded("Transfer from time:", std::to_string(transferFrom));
+    total += transferFrom;
+  }
+  printPadded("Total time (excl. IO):", std::to_string(total));
+
+  std::cout << std::endl;
   double matvecTime = timing.matvec.count();
   printPadded("MatVec time:", std::to_string(matvecTime));
 
