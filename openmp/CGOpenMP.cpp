@@ -10,13 +10,13 @@ class CGOpenMP : public CG {
   struct MatrixCRSOpenMP : MatrixCRS {
     MatrixCRSOpenMP(const MatrixCOO &coo) : MatrixCRS(coo) {}
 
-    virtual void allocatePtr() override;
-    virtual void allocateIndexAndValue() override;
+    virtual void allocatePtr(int rows) override;
+    virtual void allocateIndexAndValue(int values) override;
   };
   struct MatrixELLOpenMP : MatrixELL {
     MatrixELLOpenMP(const MatrixCOO &coo) : MatrixELL(coo) {}
 
-    virtual void allocateLength() override;
+    virtual void allocateLength(int rows) override;
     virtual void allocateIndexAndData() override;
   };
   struct JacobiOpenMP : Jacobi {
@@ -90,17 +90,17 @@ public:
   CGOpenMP() : CG(MatrixFormatCRS, PreconditionerJacobi) {}
 };
 
-void CGOpenMP::MatrixCRSOpenMP::allocatePtr() {
-  MatrixCRS::allocatePtr();
+void CGOpenMP::MatrixCRSOpenMP::allocatePtr(int rows) {
+  MatrixCRS::allocatePtr(rows);
 
 #pragma omp parallel for
-  for (int i = 0; i < N + 1; i++) {
+  for (int i = 0; i < rows + 1; i++) {
     ptr[i] = 0;
   }
 }
 
-void CGOpenMP::MatrixCRSOpenMP::allocateIndexAndValue() {
-  MatrixCRS::allocateIndexAndValue();
+void CGOpenMP::MatrixCRSOpenMP::allocateIndexAndValue(int values) {
+  MatrixCRS::allocateIndexAndValue(values);
 
 #pragma omp parallel for
   for (int i = 0; i < N; i++) {
@@ -111,11 +111,11 @@ void CGOpenMP::MatrixCRSOpenMP::allocateIndexAndValue() {
   }
 }
 
-void CGOpenMP::MatrixELLOpenMP::allocateLength() {
-  MatrixELL::allocateLength();
+void CGOpenMP::MatrixELLOpenMP::allocateLength(int rows) {
+  MatrixELL::allocateLength(rows);
 
 #pragma omp parallel for
-  for (int i = 0; i < N; i++) {
+  for (int i = 0; i < rows; i++) {
     length[i] = 0;
   }
 }

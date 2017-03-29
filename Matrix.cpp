@@ -97,7 +97,7 @@ MatrixCRS::MatrixCRS(const MatrixCOO &coo) {
   std::unique_ptr<int[]> offsets(new int[N]);
 
   // Construct ptr and initial values for offsets.
-  allocatePtr();
+  allocatePtr(N);
   ptr[0] = 0;
   for (int i = 1; i <= N; i++) {
     // Copy ptr[i - 1] as initial value for offsets[i - 1].
@@ -107,7 +107,7 @@ MatrixCRS::MatrixCRS(const MatrixCOO &coo) {
   }
 
   // Construct index and value.
-  allocateIndexAndValue();
+  allocateIndexAndValue(nz);
   for (int i = 0; i < nz; i++) {
     int row = coo.I[i];
     index[offsets[row]] = coo.J[i];
@@ -122,7 +122,7 @@ MatrixELL::MatrixELL(const MatrixCOO &coo) {
   elements = N * coo.getMaxNz();
 
   // Copy over already collected nonzeros per row.
-  allocateLength();
+  allocateLength(N);
   std::memcpy(length.get(), coo.nzPerRow.get(), sizeof(int) * N);
 
   // Temporary memory to store current offset in index / value per row.

@@ -33,8 +33,8 @@ struct MatrixCOO : Matrix {
   int getMaxNz() const;
 };
 
-/// %Matrix stored in CRS format.
-struct MatrixCRS : Matrix {
+/// Data for storing a matrix in CRS format.
+struct MatrixCRSData {
   /// Start index in #index and #value for a given row.
   std::unique_ptr<int[]> ptr;
   /// Array of column indices.
@@ -42,21 +42,24 @@ struct MatrixCRS : Matrix {
   /// Values in the matrix.
   std::unique_ptr<floatType[]> value;
 
-  MatrixCRS() = delete;
-  /// Convert \a coo into CRS format.
-  MatrixCRS(const MatrixCOO &coo);
-
   /// Allocate #ptr.
-  virtual void allocatePtr() { ptr.reset(new int[N + 1]); }
+  virtual void allocatePtr(int rows) { ptr.reset(new int[rows + 1]); }
   /// Allocate #index and #value.
-  virtual void allocateIndexAndValue() {
-    index.reset(new int[nz]);
-    value.reset(new floatType[nz]);
+  virtual void allocateIndexAndValue(int values) {
+    index.reset(new int[values]);
+    value.reset(new floatType[values]);
   }
 };
 
-/// %Matrix stored in ELLPACK format.
-struct MatrixELL : Matrix {
+/// %Matrix stored in CRS format.
+struct MatrixCRS : Matrix, MatrixCRSData {
+  MatrixCRS() = delete;
+  /// Convert \a coo into CRS format.
+  MatrixCRS(const MatrixCOO &coo);
+};
+
+/// Data for storing a matrix in ELLPACK format.
+struct MatrixELLData {
   /// Maximum number of nonzeros in a row.
   /// @see MatrixCOO#getMaxNz()
   int maxNz;
@@ -70,17 +73,20 @@ struct MatrixELL : Matrix {
   /// Data in the matrix.
   std::unique_ptr<floatType[]> data;
 
-  MatrixELL() = delete;
-  /// Convert \a coo into ELLPACK format.
-  MatrixELL(const MatrixCOO &coo);
-
   /// Allocate #length.
-  virtual void allocateLength() { length.reset(new int[N]); }
+  virtual void allocateLength(int rows) { length.reset(new int[rows]); }
   /// Allocate #index and #data.
   virtual void allocateIndexAndData() {
     index.reset(new int[elements]);
     data.reset(new floatType[elements]);
   }
+};
+
+/// %Matrix stored in ELLPACK format.
+struct MatrixELL : Matrix, MatrixELLData {
+  MatrixELL() = delete;
+  /// Convert \a coo into ELLPACK format.
+  MatrixELL(const MatrixCOO &coo);
 };
 
 #endif
