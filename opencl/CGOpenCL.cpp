@@ -214,15 +214,14 @@ void CGOpenCL::initDevice() {
 }
 
 int CGOpenCL::getGroups(int maxGroups) {
-  int maxNeededGroups = (N + Local - 1) / Local;
-  int groups = maxNeededGroups, div = 2;
+  int groups, div = 1;
 
   // We have grid-stride loops so it should be better if all groups receive
   // roughly the same amount of work.
-  while (groups > maxGroups) {
-    groups = maxNeededGroups / div;
+  do {
+    groups = std::ceil(((double)N) / Local / div);
     div++;
-  }
+  } while (groups > maxGroups);
 
   return groups;
 }

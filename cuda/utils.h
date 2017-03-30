@@ -1,6 +1,8 @@
 #ifndef UTILS_H
 #define UTILS_H
 
+#include <cmath>
+
 static inline void checkError(cudaError_t error) {
   if (error != cudaSuccess) {
     std::cerr << "CUDA error: " << cudaGetErrorString(error) << std::endl;
@@ -29,15 +31,14 @@ static inline void checkedMemcpyToDevice(void *dst, const void *src,
 static inline void checkedFree(void *devPtr) { checkError(cudaFree(devPtr)); }
 
 static inline int calculateBlocks(int N, int threads, int maxBlocks) {
-  int maxNeededBlocks = (N + threads - 1) / threads;
-  int blocks = maxNeededBlocks, div = 2;
+  int blocks, div = 1;
 
   // We have grid-stride loops so it should be better if all blocks receive
   // roughly the same amount of work.
-  while (blocks > maxBlocks) {
-    blocks = maxNeededBlocks / div;
+  do {
+    blocks = std::ceil(((double)N) / threads / div);
     div++;
-  }
+  } while (blocks > maxBlocks);
 
   return blocks;
 }
