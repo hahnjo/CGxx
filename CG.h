@@ -7,6 +7,7 @@
 
 #include "Matrix.h"
 #include "Preconditioner.h"
+#include "WorkDistribution.h"
 #include "def.h"
 
 /// @brief The base class implementing the conjugate gradients method.
@@ -35,9 +36,9 @@ public:
   enum MatrixFormat {
     /// %Matrix is represented by CG#matrixCOO.
     MatrixFormatCOO,
-    /// %Matrix is represented by CG#matrixCRS.
+    /// %Matrix is represented by either CG#matrixCRS or CG#splitMatrixCRS.
     MatrixFormatCRS,
-    /// %Matrix is represented by CG#matrixELL.
+    /// %Matrix is represented by either CG#matrixELL or CG#splitMatrixELL.
     MatrixFormatELL,
   };
 
@@ -117,6 +118,9 @@ protected:
   /// Nonzeros in the matrix.
   int nz;
 
+  /// How the work is distributed into multiple chunks.
+  std::unique_ptr<WorkDistribution> workDistribution;
+
   /// Format to store the matrix.
   MatrixFormat matrixFormat;
   /// Matrix in cooridinate format.
@@ -125,6 +129,11 @@ protected:
   std::unique_ptr<MatrixCRS> matrixCRS;
   /// Matrix in ELLPACK format.
   std::unique_ptr<MatrixELL> matrixELL;
+
+  /// Matrix in CRS format, split for #workDistribution.
+  std::unique_ptr<SplitMatrixCRS> splitMatrixCRS;
+  /// Matrix in ELLPACK format, split for #workDistribution.
+  std::unique_ptr<SplitMatrixELL> splitMatrixELL;
 
   /// The preconditioner to use.
   Preconditioner preconditioner = PreconditionerNone;
@@ -151,6 +160,10 @@ protected:
     return false;
   }
 
+  /// @return the number of chunks that the work should be split into, or -1
+  /// if no work distributition is necessary.
+  virtual int getNumberOfChunks() { return -1; }
+
   /// Convert to MatrixCRS.
   virtual void convertToMatrixCRS() {
     matrixCRS.reset(new MatrixCRS(*matrixCOO));
@@ -158,6 +171,14 @@ protected:
   /// Convert to MatrixELL.
   virtual void convertToMatrixELL() {
     matrixELL.reset(new MatrixELL(*matrixCOO));
+  }
+  /// Convert to SplitMatrixCRS.
+  virtual void convertToSplitMatrixCRS() {
+    splitMatrixCRS.reset(new SplitMatrixCRS(*matrixCOO, *workDistribution));
+  }
+  /// Convert to SplitMatrixELL.
+  virtual void convertToSplitMatrixELL() {
+    splitMatrixELL.reset(new SplitMatrixELL(*matrixCOO, *workDistribution));
   }
 
   /// Initialize the Jacobi preconditioner.

@@ -3,6 +3,7 @@
 
 #include <memory>
 
+#include "WorkDistribution.h"
 #include "def.h"
 
 /// Base class for storing a sparse matrix.
@@ -29,8 +30,10 @@ struct MatrixCOO : Matrix {
   /// Read matrix in coordinate from \a file.
   MatrixCOO(const char *file);
 
-  /// Get maximum number of nonzers in a row.
-  int getMaxNz() const;
+  /// Get maximum number of nonzeros in a row.
+  int getMaxNz() const { return getMaxNz(0, N); }
+  /// Get maximum number of nonzeros in a row between \a from and \a to.
+  int getMaxNz(int from, int to) const;
 };
 
 /// Data for storing a matrix in CRS format.
@@ -68,6 +71,16 @@ struct MatrixCRS : Matrix, MatrixCRSData {
   MatrixCRS() = delete;
   /// Convert \a coo into CRS format.
   MatrixCRS(const MatrixCOO &coo);
+};
+
+/// %Matrix stored in CRS format, split for a WorkDistribution.
+struct SplitMatrixCRS : Matrix {
+  /// Data for each chunk of the WorkDistribution.
+  std::unique_ptr<MatrixCRSData[]> data;
+
+  SplitMatrixCRS() = delete;
+  /// Convert \a coo into CRS format and split based on \a wd.
+  SplitMatrixCRS(const MatrixCOO &coo, const WorkDistribution &wd);
 };
 
 /// Data for storing a matrix in ELLPACK format.
@@ -111,6 +124,16 @@ struct MatrixELL : Matrix, MatrixELLData {
   MatrixELL() = delete;
   /// Convert \a coo into ELLPACK format.
   MatrixELL(const MatrixCOO &coo);
+};
+
+/// %Matrix stored in ELLPACK format, split for a WorkDistribution.
+struct SplitMatrixELL : Matrix {
+  /// Data for each chunk of the WorkDistribution.
+  std::unique_ptr<MatrixELLData[]> data;
+
+  SplitMatrixELL() = delete;
+  /// Convert \a coo into ELLPACK format and split based on \a wd.
+  SplitMatrixELL(const MatrixCOO &coo, const WorkDistribution &wd);
 };
 
 #endif

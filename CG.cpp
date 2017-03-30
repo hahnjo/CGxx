@@ -10,6 +10,7 @@
 
 #include "CG.h"
 #include "Matrix.h"
+#include "WorkDistribution.h"
 
 const char *CG_MAX_ITER = "CG_MAX_ITER";
 const char *CG_TOLERANCE = "CG_TOLERANCE";
@@ -107,19 +108,38 @@ void CG::init(const char *matrixFile) {
   N = matrixCOO->N;
   nz = matrixCOO->nz;
 
+  // Does this implementation need a work distribution?
+  int numberOfChunks = getNumberOfChunks();
+  if (numberOfChunks != -1) {
+    workDistribution.reset(WorkDistribution::calculateByRow(N, numberOfChunks));
+  }
+
   // Eventually transform the matrix into requested format.
   auto startConverting = now();
   switch (matrixFormat) {
   case MatrixFormatCOO:
     // Nothing to be done.
+    assert(numberOfChunks == -1);
     break;
   case MatrixFormatCRS:
-    std::cout << "Converting matrix to CRS format..." << std::endl;
-    convertToMatrixCRS();
+    if (numberOfChunks == -1) {
+      std::cout << "Converting matrix to CRS format..." << std::endl;
+      convertToMatrixCRS();
+    } else {
+      std::cout << "Converting and splitting matrix in CRS format..."
+                << std::endl;
+      convertToSplitMatrixCRS();
+    }
     break;
   case MatrixFormatELL:
-    std::cout << "Converting matrix to ELL format..." << std::endl;
-    convertToMatrixELL();
+    if (numberOfChunks == -1) {
+      std::cout << "Converting matrix to ELL format..." << std::endl;
+      convertToMatrixELL();
+    } else {
+      std::cout << "Converting and splitting matrix in ELL format..."
+                << std::endl;
+      convertToSplitMatrixELL();
+    }
     break;
   }
 

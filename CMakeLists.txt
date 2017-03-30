@@ -19,6 +19,7 @@ add_library(common OBJECT
   CG.cpp
   Matrix.cpp
   Preconditioner.cpp
+  WorkDistribution.cpp
   mmio.c
 )
 

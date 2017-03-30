@@ -1,8 +1,10 @@
+#include <cassert>
 #include <cstdio>
 #include <cstring>
 #include <iostream>
 
 #include "Matrix.h"
+#include "WorkDistribution.h"
 
 extern "C" {
 #include "mmio.h"
@@ -79,9 +81,9 @@ MatrixCOO::MatrixCOO(const char *file) {
   fclose(fp);
 }
 
-int MatrixCOO::getMaxNz() const {
+int MatrixCOO::getMaxNz(int from, int to) const {
   int maxNz = 0;
-  for (int i = 0; i < N; i++) {
+  for (int i = from; i < to; i++) {
     if (nzPerRow[i] > maxNz) {
       maxNz = nzPerRow[i];
     }
@@ -116,6 +118,54 @@ MatrixCRS::MatrixCRS(const MatrixCOO &coo) {
   }
 }
 
+SplitMatrixCRS::SplitMatrixCRS(const MatrixCOO &coo, const WorkDistribution &wd)
+    : data(new MatrixCRSData[wd.numberOfChunks]) {
+  N = coo.N;
+  nz = coo.nz;
+
+  // Temporary memory to store current offset in index / value per row.
+  std::unique_ptr<int[]> offsets(new int[N]);
+
+  // Construct ptr and initial values for offsets for each chunk.
+  for (int c = 0; c < wd.numberOfChunks; c++) {
+    int offset = wd.offsets[c];
+    int length = wd.lengths[c];
+
+    data[c].allocatePtr(length);
+    data[c].ptr[0] = 0;
+    for (int i = 1; i <= length; i++) {
+      offsets[offset + i - 1] = data[c].ptr[i - 1];
+
+      data[c].ptr[i] = data[c].ptr[i - 1] + coo.nzPerRow[offset + i - 1];
+    }
+  }
+
+  // Allocate index and value for each chunk.
+  for (int c = 0; c < wd.numberOfChunks; c++) {
+    int length = wd.lengths[c];
+    int values = data[c].ptr[length];
+    data[c].allocateIndexAndValue(values);
+  }
+
+  // Construct index and value for all chunks.
+  for (int i = 0; i < nz; i++) {
+    int row = coo.I[i];
+
+    // Find corresponding chunk, linear search should be fine here...
+    int chunk;
+    for (chunk = 0; chunk < wd.numberOfChunks; chunk++) {
+      if (row < wd.offsets[chunk] + wd.lengths[chunk]) {
+        break;
+      }
+    }
+    assert(chunk != wd.numberOfChunks && "Should have found a chunk!");
+
+    data[chunk].index[offsets[row]] = coo.J[i];
+    data[chunk].value[offsets[row]] = coo.V[i];
+    offsets[row]++;
+  }
+}
+
 MatrixELL::MatrixELL(const MatrixCOO &coo) {
   N = coo.N;
   nz = coo.nz;
@@ -136,6 +186,50 @@ MatrixELL::MatrixELL(const MatrixCOO &coo) {
     int k = offsets[row] * N + row;
     index[k] = coo.J[i];
     data[k] = coo.V[i];
+    offsets[row]++;
+  }
+}
+
+SplitMatrixELL::SplitMatrixELL(const MatrixCOO &coo, const WorkDistribution &wd)
+    : data(new MatrixELLData[wd.numberOfChunks]) {
+  N = coo.N;
+  nz = coo.nz;
+
+  // Allocate length for each chunk.
+  for (int c = 0; c < wd.numberOfChunks; c++) {
+    int offset = wd.offsets[c];
+    int length = wd.lengths[c];
+    int maxNz = coo.getMaxNz(offset, offset + length);
+
+    // Copy over already collected nonzeros per row.
+    data[c].allocateLength(length);
+    std::memcpy(data[c].length, coo.nzPerRow.get() + offset,
+                sizeof(int) * length);
+
+    data[c].elements = maxNz * length;
+    data[c].allocateIndexAndData();
+  }
+
+  // Temporary memory to store current offset in index / value per row.
+  std::unique_ptr<int[]> offsets(new int[N]);
+  std::memset(offsets.get(), 0, sizeof(int) * N);
+
+  // Construct column and data for all chunks.
+  for (int i = 0; i < nz; i++) {
+    int row = coo.I[i];
+
+    // Find corresponding chunk, linear search should be fine here...
+    int chunk;
+    for (chunk = 0; chunk < wd.numberOfChunks; chunk++) {
+      if (row < wd.offsets[chunk] + wd.lengths[chunk]) {
+        break;
+      }
+    }
+    assert(chunk != wd.numberOfChunks && "Should have found a chunk!");
+
+    int k = offsets[row] * wd.lengths[chunk] + row - wd.offsets[chunk];
+    data[chunk].index[k] = coo.J[i];
+    data[chunk].data[k] = coo.V[i];
     offsets[row]++;
   }
 }
