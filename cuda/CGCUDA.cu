@@ -10,6 +10,47 @@
 
 /// Class implementing parallel kernels with CUDA.
 class CGCUDA : public CG {
+  struct MatrixCRSCUDA : MatrixCRS {
+    MatrixCRSCUDA(const MatrixCOO &coo) : MatrixCRS(coo) {}
+
+    virtual void allocatePtr(int rows) override {
+      checkedMallocHost(&ptr, sizeof(int) * (rows + 1));
+    }
+    virtual void deallocatePtr() override { checkedFreeHost(ptr); }
+    virtual void allocateIndexAndValue(int values) override {
+      checkedMallocHost(&index, sizeof(int) * values);
+      checkedMallocHost(&value, sizeof(floatType) * values);
+    }
+    virtual void deallocateIndexAndValue() override {
+      checkedFreeHost(index);
+      checkedFreeHost(value);
+    }
+  };
+  struct MatrixELLCUDA : MatrixELL {
+    MatrixELLCUDA(const MatrixCOO &coo) : MatrixELL(coo) {}
+
+    virtual void allocateLength(int rows) override {
+      checkedMallocHost(&length, sizeof(int) * rows);
+    }
+    virtual void deallocateLength() override { checkedFreeHost(length); }
+    virtual void allocateIndexAndData() override {
+      checkedMallocHost(&index, sizeof(int) * elements);
+      checkedMallocHost(&data, sizeof(floatType) * elements);
+    }
+    virtual void deallocateIndexAndData() override {
+      checkedFreeHost(index);
+      checkedFreeHost(data);
+    }
+  };
+  struct JacobiCUDA : Jacobi {
+    JacobiCUDA(const MatrixCOO &coo) : Jacobi(coo) {}
+
+    virtual void allocateC(int N) override {
+      checkedMallocHost(&C, sizeof(floatType) * N);
+    }
+    virtual void deallocateC() override { checkedFreeHost(C); }
+  };
+
   const int Threads = 128;
   const int MaxBlocks = 1024;
   // 65536 seems to not work on the Pascal nodes.
@@ -68,6 +109,26 @@ class CGCUDA : public CG {
   }
 
   virtual void init(const char *matrixFile) override;
+
+  virtual void convertToMatrixCRS() override {
+    matrixCRS.reset(new MatrixCRSCUDA(*matrixCOO));
+  }
+  virtual void convertToMatrixELL() override {
+    matrixELL.reset(new MatrixELLCUDA(*matrixCOO));
+  }
+
+  virtual void initJacobi() override {
+    jacobi.reset(new JacobiCUDA(*matrixCOO));
+  }
+
+  virtual void allocateK() override {
+    checkedMallocHost(&k, sizeof(floatType) * N);
+  }
+  virtual void deallocateK() override { checkedFreeHost(k); }
+  virtual void allocateX() override {
+    checkedMallocHost(&x, sizeof(floatType) * N);
+  }
+  virtual void deallocateX() override { checkedFreeHost(x); }
 
   virtual bool needsTransfer() override { return true; }
   virtual void doTransferTo() override;

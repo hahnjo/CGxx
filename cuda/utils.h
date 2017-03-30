@@ -30,6 +30,14 @@ static inline void checkedMemcpyToDevice(void *dst, const void *src,
 
 static inline void checkedFree(void *devPtr) { checkError(cudaFree(devPtr)); }
 
+static inline void checkedMallocHost(void *ptr, size_t size) {
+  checkError(cudaMallocHost((void **)ptr, size));
+}
+
+static inline void checkedFreeHost(void *ptr) {
+  checkError(cudaFreeHost(ptr));
+}
+
 static inline int calculateBlocks(int N, int threads, int maxBlocks) {
   int blocks, div = 1;
 
