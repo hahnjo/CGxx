@@ -118,10 +118,11 @@ MatrixCRS::MatrixCRS(const MatrixCOO &coo) {
   }
 }
 
-SplitMatrixCRS::SplitMatrixCRS(const MatrixCOO &coo, const WorkDistribution &wd)
-    : data(new MatrixCRSData[wd.numberOfChunks]) {
+SplitMatrixCRS::SplitMatrixCRS(const MatrixCOO &coo,
+                               const WorkDistribution &wd) {
   N = coo.N;
   nz = coo.nz;
+  allocateData(wd.numberOfChunks);
 
   // Temporary memory to store current offset in index / value per row.
   std::unique_ptr<int[]> offsets(new int[N]);
@@ -190,10 +191,11 @@ MatrixELL::MatrixELL(const MatrixCOO &coo) {
   }
 }
 
-SplitMatrixELL::SplitMatrixELL(const MatrixCOO &coo, const WorkDistribution &wd)
-    : data(new MatrixELLData[wd.numberOfChunks]) {
+SplitMatrixELL::SplitMatrixELL(const MatrixCOO &coo,
+                               const WorkDistribution &wd) {
   N = coo.N;
   nz = coo.nz;
+  allocateData(wd.numberOfChunks);
 
   // Allocate length for each chunk.
   for (int c = 0; c < wd.numberOfChunks; c++) {

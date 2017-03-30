@@ -12,4 +12,9 @@ if (CUDA_FOUND)
     CGCUDA.cu
     kernel.cu
   )
+
+  cuda_add_executable(cg_multi_cuda $<TARGET_OBJECTS:common>
+    CGMultiCUDA.cu
+    kernel.cu
+  )
 endif()

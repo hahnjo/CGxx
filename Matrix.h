@@ -81,6 +81,10 @@ struct SplitMatrixCRS : Matrix {
   SplitMatrixCRS() = delete;
   /// Convert \a coo into CRS format and split based on \a wd.
   SplitMatrixCRS(const MatrixCOO &coo, const WorkDistribution &wd);
+
+  virtual void allocateData(int numberOfChunks) {
+    data.reset(new MatrixCRSData[numberOfChunks]);
+  }
 };
 
 /// Data for storing a matrix in ELLPACK format.
@@ -134,6 +138,10 @@ struct SplitMatrixELL : Matrix {
   SplitMatrixELL() = delete;
   /// Convert \a coo into ELLPACK format and split based on \a wd.
   SplitMatrixELL(const MatrixCOO &coo, const WorkDistribution &wd);
+
+  virtual void allocateData(int numberOfChunks) {
+    data.reset(new MatrixELLData[numberOfChunks]);
+  }
 };
 
 #endif

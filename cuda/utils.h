@@ -12,6 +12,10 @@ static inline void checkError(cudaError_t error) {
 
 static inline void checkLastError() { checkError(cudaGetLastError()); }
 
+static inline void checkedSetDevice(int device) {
+  checkError(cudaSetDevice(device));
+}
+
 static inline void checkedSynchronize() { checkError(cudaDeviceSynchronize()); }
 
 static inline void checkedMalloc(void *devPtr, size_t size) {
@@ -23,9 +27,21 @@ static inline void checkedMemcpy(void *dst, const void *src, size_t count,
   checkError(cudaMemcpy(dst, src, count, kind));
 }
 
+static inline void checkedMemcpyAsync(void *dst, const void *src, size_t count,
+                                      enum cudaMemcpyKind kind,
+                                      cudaStream_t stream = 0) {
+  checkError(cudaMemcpyAsync(dst, src, count, kind, stream));
+}
+
 static inline void checkedMemcpyToDevice(void *dst, const void *src,
                                          size_t count) {
   checkedMemcpy(dst, src, count, cudaMemcpyHostToDevice);
+}
+
+static inline void checkedMemcpyAsyncToDevice(void *dst, const void *src,
+                                              size_t count,
+                                              cudaStream_t stream = 0) {
+  checkedMemcpyAsync(dst, src, count, cudaMemcpyHostToDevice, stream);
 }
 
 static inline void checkedFree(void *devPtr) { checkError(cudaFree(devPtr)); }

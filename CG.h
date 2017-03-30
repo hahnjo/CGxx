@@ -246,7 +246,7 @@ public:
   virtual void printSummary();
 
   /// Cleanup allocated memory.
-  void cleanup() {
+  virtual void cleanup() {
     // Uses virtual methods and therefore cannot be done in destructor.
     deallocateK();
     deallocateX();

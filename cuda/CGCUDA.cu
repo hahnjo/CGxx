@@ -1,6 +1,5 @@
 #include <cassert>
 #include <iostream>
-#include <memory>
 
 #include "../CG.h"
 #include "CGCUDABase.h"
@@ -41,7 +40,7 @@ class CGCUDA : public CGCUDABase {
 
 void CGCUDA::init(const char *matrixFile) {
   // Set the device for initialization.
-  checkError(cudaSetDevice(0));
+  checkedSetDevice(0);
 
   CG::init(matrixFile);
 
