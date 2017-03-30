@@ -33,9 +33,9 @@ class CGOpenMP : public CG {
   floatType *getVector(Vector v) {
     switch (v) {
     case VectorK:
-      return k.get();
+      return k;
     case VectorX:
-      return x.get();
+      return x;
     case VectorP:
       return p.get();
     case VectorQ:

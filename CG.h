@@ -132,9 +132,9 @@ protected:
   std::unique_ptr<Jacobi> jacobi;
 
   /// #VectorK
-  std::unique_ptr<floatType[]> k;
+  floatType *k = nullptr;
   /// #VectorX
-  std::unique_ptr<floatType[]> x;
+  floatType *x = nullptr;
 
   /// Construct a new object with a \a defaultMatrixFormat to store the matrix.
   CG(MatrixFormat defaultMatrixFormat) : matrixFormat(defaultMatrixFormat) {}
@@ -164,9 +164,13 @@ protected:
   virtual void initJacobi() { jacobi.reset(new Jacobi(*matrixCOO)); }
 
   /// Allocate #k.
-  virtual void allocateK() { k.reset(new floatType[N]); }
+  virtual void allocateK() { k = new floatType[N]; }
+  /// Deallocate #k.
+  virtual void deallocateK() { delete[] k; }
   /// Allocate #x.
-  virtual void allocateX() { x.reset(new floatType[N]); }
+  virtual void allocateX() { x = new floatType[N]; }
+  /// Deallocate #x.
+  virtual void deallocateX() { delete[] x; }
 
   /// Do transfer data before calling #solve().
   virtual void doTransferTo() {}
@@ -219,6 +223,13 @@ public:
 
   /// Print summary after system has been solved.
   virtual void printSummary();
+
+  /// Cleanup allocated memory.
+  void cleanup() {
+    // Uses virtual methods and therefore cannot be done in destructor.
+    deallocateK();
+    deallocateX();
+  }
 
   /// @return new instance of a CG implementation.
   static CG *getInstance();

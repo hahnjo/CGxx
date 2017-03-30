@@ -100,8 +100,8 @@ void CGCUDA::doTransferTo() {
   size_t vectorSize = sizeof(floatType) * N;
   checkedMalloc(&k_dev, vectorSize);
   checkedMalloc(&x_dev, vectorSize);
-  checkedMemcpyToDevice(k_dev, k.get(), vectorSize);
-  checkedMemcpyToDevice(x_dev, x.get(), vectorSize);
+  checkedMemcpyToDevice(k_dev, k, vectorSize);
+  checkedMemcpyToDevice(x_dev, x, vectorSize);
 
   checkedMalloc(&p_dev, vectorSize);
   checkedMalloc(&q_dev, vectorSize);
@@ -117,11 +117,9 @@ void CGCUDA::doTransferTo() {
     checkedMalloc(&matrixCRS_dev.index, indexSize);
     checkedMalloc(&matrixCRS_dev.value, valueSize);
 
-    checkedMemcpyToDevice(matrixCRS_dev.ptr, matrixCRS->ptr.get(), ptrSize);
-    checkedMemcpyToDevice(matrixCRS_dev.index, matrixCRS->index.get(),
-                          indexSize);
-    checkedMemcpyToDevice(matrixCRS_dev.value, matrixCRS->value.get(),
-                          valueSize);
+    checkedMemcpyToDevice(matrixCRS_dev.ptr, matrixCRS->ptr, ptrSize);
+    checkedMemcpyToDevice(matrixCRS_dev.index, matrixCRS->index, indexSize);
+    checkedMemcpyToDevice(matrixCRS_dev.value, matrixCRS->value, valueSize);
     break;
   }
   case MatrixFormatELL: {
@@ -134,11 +132,9 @@ void CGCUDA::doTransferTo() {
     checkedMalloc(&matrixELL_dev.index, indexSize);
     checkedMalloc(&matrixELL_dev.data, dataSize);
 
-    checkedMemcpyToDevice(matrixELL_dev.length, matrixELL->length.get(),
-                          lengthSize);
-    checkedMemcpyToDevice(matrixELL_dev.index, matrixELL->index.get(),
-                          indexSize);
-    checkedMemcpyToDevice(matrixELL_dev.data, matrixELL->data.get(), dataSize);
+    checkedMemcpyToDevice(matrixELL_dev.length, matrixELL->length, lengthSize);
+    checkedMemcpyToDevice(matrixELL_dev.index, matrixELL->index, indexSize);
+    checkedMemcpyToDevice(matrixELL_dev.data, matrixELL->data, dataSize);
     break;
   }
   default:
@@ -150,7 +146,7 @@ void CGCUDA::doTransferTo() {
     switch (preconditioner) {
     case PreconditionerJacobi:
       checkedMalloc(&jacobi_dev.C, vectorSize);
-      checkedMemcpyToDevice(jacobi_dev.C, jacobi->C.get(), vectorSize);
+      checkedMemcpyToDevice(jacobi_dev.C, jacobi->C, vectorSize);
       break;
     default:
       assert(0 && "Invalid preconditioner!");
@@ -162,7 +158,7 @@ void CGCUDA::doTransferTo() {
 
 void CGCUDA::doTransferFrom() {
   // Copy back solution and free memory on the device.
-  checkedMemcpy(x.get(), x_dev, sizeof(floatType) * N, cudaMemcpyDeviceToHost);
+  checkedMemcpy(x, x_dev, sizeof(floatType) * N, cudaMemcpyDeviceToHost);
 
   checkedFree(k_dev);
   checkedFree(x_dev);

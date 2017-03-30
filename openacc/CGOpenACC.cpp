@@ -17,9 +17,9 @@ class CGOpenACC : public CG {
   floatType *getVector(Vector v) {
     switch (v) {
     case VectorK:
-      return k.get();
+      return k;
     case VectorX:
-      return x.get();
+      return x;
     case VectorP:
       return p.get();
     case VectorQ:
@@ -84,23 +84,23 @@ void CGOpenACC::doTransferTo() {
   floatType *p = this->p.get();
   floatType *q = this->q.get();
   floatType *r = this->r.get();
-  floatType *x = this->x.get();
-  floatType *k = this->k.get();
+  floatType *x = this->x;
+  floatType *k = this->k;
 
   #pragma acc enter data create(p[0:N], q[0:N], r[0:N]) copyin(x[0:N], k[0:N])
   switch (matrixFormat) {
   case MatrixFormatCRS: {
-    int *ptr = matrixCRS->ptr.get();
-    int *index = matrixCRS->index.get();
-    floatType *value = matrixCRS->value.get();
+    int *ptr = matrixCRS->ptr;
+    int *index = matrixCRS->index;
+    floatType *value = matrixCRS->value;
     #pragma acc enter data copyin(ptr[0:N+1], index[0:nz], value[0:nz])
     break;
   }
   case MatrixFormatELL: {
     int elements = matrixELL->elements;
-    int *length = matrixELL->length.get();
-    int *index = matrixELL->index.get();
-    floatType *data = matrixELL->data.get();
+    int *length = matrixELL->length;
+    int *index = matrixELL->index;
+    floatType *data = matrixELL->data;
     #pragma acc enter data copyin(length[0:N]) \
                            copyin(index[0:elements], data[0:elements])
     break;
@@ -114,7 +114,7 @@ void CGOpenACC::doTransferTo() {
 
     switch (preconditioner) {
     case PreconditionerJacobi: {
-      floatType *C = jacobi->C.get();
+      floatType *C = jacobi->C;
       #pragma acc enter data copyin(C[0:N])
       break;
     }
@@ -130,23 +130,23 @@ void CGOpenACC::doTransferFrom() {
   floatType *p = this->p.get();
   floatType *q = this->q.get();
   floatType *r = this->r.get();
-  floatType *x = this->x.get();
-  floatType *k = this->k.get();
+  floatType *x = this->x;
+  floatType *k = this->k;
 
   #pragma acc exit data delete(p[0:N], q[0:N], r[0:N], k[0:N]) copyout(x[0:N])
   switch (matrixFormat) {
   case MatrixFormatCRS: {
-    int *ptr = matrixCRS->ptr.get();
-    int *index = matrixCRS->index.get();
-    floatType *value = matrixCRS->value.get();
+    int *ptr = matrixCRS->ptr;
+    int *index = matrixCRS->index;
+    floatType *value = matrixCRS->value;
     #pragma acc exit data delete(ptr[0:N+1], index[0:nz], value[0:nz])
     break;
   }
   case MatrixFormatELL: {
     int elements = matrixELL->elements;
-    int *length = matrixELL->length.get();
-    int *index = matrixELL->index.get();
-    floatType *data = matrixELL->data.get();
+    int *length = matrixELL->length;
+    int *index = matrixELL->index;
+    floatType *data = matrixELL->data;
     #pragma acc exit data delete(length[0:N]) \
                           delete(index[0:elements], data[0:elements])
     break;
@@ -160,7 +160,7 @@ void CGOpenACC::doTransferFrom() {
 
     switch (preconditioner) {
     case PreconditionerJacobi: {
-      floatType *C = jacobi->C.get();
+      floatType *C = jacobi->C;
       #pragma acc exit data delete(C[0:N])
       break;
     }
@@ -184,9 +184,9 @@ void CGOpenACC::cpy(Vector _dst, Vector _src) {
 void CGOpenACC::matvecKernelCRS(floatType *x, floatType *y) {
   int N = this->N;
   int nz = this->nz;
-  int *ptr = matrixCRS->ptr.get();
-  int *index = matrixCRS->index.get();
-  floatType *value = matrixCRS->value.get();
+  int *ptr = matrixCRS->ptr;
+  int *index = matrixCRS->index;
+  floatType *value = matrixCRS->value;
 
 #pragma acc parallel loop gang vector present(x[0:N], y[0:N]) \
                           present(ptr[0:N+1], index[0:nz], value[0:nz])
@@ -202,9 +202,9 @@ void CGOpenACC::matvecKernelCRS(floatType *x, floatType *y) {
 void CGOpenACC::matvecKernelELL(floatType *x, floatType *y) {
   int N = this->N;
   int elements = matrixELL->elements;
-  int *length = matrixELL->length.get();
-  int *index = matrixELL->index.get();
-  floatType *data = matrixELL->data.get();
+  int *length = matrixELL->length;
+  int *index = matrixELL->index;
+  floatType *data = matrixELL->data;
 
 #pragma acc parallel loop gang vector present(x[0:N], y[0:N], length[0:N]) \
                           present(index[0:elements], data[0:elements])
@@ -273,7 +273,7 @@ floatType CGOpenACC::vectorDotKernel(Vector _a, Vector _b) {
 
 void CGOpenACC::applyPreconditionerKernelJacobi(floatType *x, floatType *y) {
   int N = this->N;
-  floatType *C = jacobi->C.get();
+  floatType *C = jacobi->C;
 
 #pragma acc parallel loop present(x[0:N], y[0:N], C[0:N])
   for (int i = 0; i < N; i++) {

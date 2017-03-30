@@ -282,8 +282,8 @@ void CGOpenCL::doTransferTo() {
   size_t vectorSize = sizeof(floatType) * N;
   k_dev = checkedCreateReadBuffer(vectorSize);
   x_dev = checkedCreateBuffer(vectorSize);
-  checkedEnqueWriteBuffer(k_dev, vectorSize, k.get());
-  checkedEnqueWriteBuffer(x_dev, vectorSize, x.get());
+  checkedEnqueWriteBuffer(k_dev, vectorSize, k);
+  checkedEnqueWriteBuffer(x_dev, vectorSize, x);
 
   p_dev = checkedCreateBuffer(vectorSize);
   q_dev = checkedCreateBuffer(vectorSize);
@@ -299,11 +299,9 @@ void CGOpenCL::doTransferTo() {
     matrixCRS_dev.index = checkedCreateBuffer(indexSize);
     matrixCRS_dev.value = checkedCreateBuffer(valueSize);
 
-    checkedEnqueWriteBuffer(matrixCRS_dev.ptr, ptrSize, matrixCRS->ptr.get());
-    checkedEnqueWriteBuffer(matrixCRS_dev.index, indexSize,
-                            matrixCRS->index.get());
-    checkedEnqueWriteBuffer(matrixCRS_dev.value, valueSize,
-                            matrixCRS->value.get());
+    checkedEnqueWriteBuffer(matrixCRS_dev.ptr, ptrSize, matrixCRS->ptr);
+    checkedEnqueWriteBuffer(matrixCRS_dev.index, indexSize, matrixCRS->index);
+    checkedEnqueWriteBuffer(matrixCRS_dev.value, valueSize, matrixCRS->value);
     break;
   }
   case MatrixFormatELL: {
@@ -317,11 +315,9 @@ void CGOpenCL::doTransferTo() {
     matrixELL_dev.data = checkedCreateBuffer(dataSize);
 
     checkedEnqueWriteBuffer(matrixELL_dev.length, lengthSize,
-                            matrixELL->length.get());
-    checkedEnqueWriteBuffer(matrixELL_dev.index, indexSize,
-                            matrixELL->index.get());
-    checkedEnqueWriteBuffer(matrixELL_dev.data, dataSize,
-                            matrixELL->data.get());
+                            matrixELL->length);
+    checkedEnqueWriteBuffer(matrixELL_dev.index, indexSize, matrixELL->index);
+    checkedEnqueWriteBuffer(matrixELL_dev.data, dataSize, matrixELL->data);
     break;
   }
   default:
@@ -333,7 +329,7 @@ void CGOpenCL::doTransferTo() {
     switch (preconditioner) {
     case PreconditionerJacobi:
       jacobi_dev.C = checkedCreateBuffer(vectorSize);
-      checkedEnqueWriteBuffer(jacobi_dev.C, vectorSize, jacobi->C.get());
+      checkedEnqueWriteBuffer(jacobi_dev.C, vectorSize, jacobi->C);
       break;
     default:
       assert(0 && "Invalid preconditioner!");
@@ -348,8 +344,7 @@ void CGOpenCL::doTransferTo() {
 void CGOpenCL::doTransferFrom() {
   // Copy back solution and free memory on the device.
   checkError(clEnqueueReadBuffer(queue, x_dev, CL_FALSE, 0,
-                                 sizeof(floatType) * N, x.get(), 0, NULL,
-                                 NULL));
+                                 sizeof(floatType) * N, x, 0, NULL, NULL));
   checkedFinish();
 
   checkedReleaseMemObject(k_dev);

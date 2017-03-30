@@ -138,14 +138,14 @@ void CG::init(const char *matrixFile) {
 
   allocateK();
   // Init k so that the solution is (1, ..., 1)^T
-  std::memset(k.get(), 0, sizeof(floatType) * N);
+  std::memset(k, 0, sizeof(floatType) * N);
   for (int i = 0; i < nz; i++) {
     k[matrixCOO->I[i]] += matrixCOO->V[i];
   }
 
   allocateX();
   // Start with (0, ..., 0)^T
-  std::memset(x.get(), 0, sizeof(floatType) * N);
+  std::memset(x, 0, sizeof(floatType) * N);
 
   if (matrixFormat != MatrixFormatCOO) {
     // Release matrixCOO which is not needed anymore.
@@ -371,6 +371,7 @@ int main(int argc, char *argv[]) {
   }
 
   cg->printSummary();
+  cg->cleanup();
 
   return EXIT_SUCCESS;
 }

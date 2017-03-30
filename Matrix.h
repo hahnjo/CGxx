@@ -36,18 +36,30 @@ struct MatrixCOO : Matrix {
 /// Data for storing a matrix in CRS format.
 struct MatrixCRSData {
   /// Start index in #index and #value for a given row.
-  std::unique_ptr<int[]> ptr;
+  int *ptr;
   /// Array of column indices.
-  std::unique_ptr<int[]> index;
+  int *index;
   /// Values in the matrix.
-  std::unique_ptr<floatType[]> value;
+  floatType *value;
+
+  ~MatrixCRSData() {
+    deallocatePtr();
+    deallocateIndexAndValue();
+  }
 
   /// Allocate #ptr.
-  virtual void allocatePtr(int rows) { ptr.reset(new int[rows + 1]); }
+  virtual void allocatePtr(int rows) { ptr = new int[rows + 1]; }
+  /// Deallocate #ptr.
+  virtual void deallocatePtr() { delete[] ptr; }
   /// Allocate #index and #value.
   virtual void allocateIndexAndValue(int values) {
-    index.reset(new int[values]);
-    value.reset(new floatType[values]);
+    index = new int[values];
+    value = new floatType[values];
+  }
+  /// Deallocate #index and #value.
+  virtual void deallocateIndexAndValue() {
+    delete[] index;
+    delete[] value;
   }
 };
 
@@ -67,18 +79,30 @@ struct MatrixELLData {
   int elements;
 
   /// Array of length, holding number of nonzeros per row.
-  std::unique_ptr<int[]> length;
+  int *length;
   /// Array of column indices.
-  std::unique_ptr<int[]> index;
+  int *index;
   /// Data in the matrix.
-  std::unique_ptr<floatType[]> data;
+  floatType *data;
+
+  ~MatrixELLData() {
+    deallocateLength();
+    deallocateIndexAndData();
+  }
 
   /// Allocate #length.
-  virtual void allocateLength(int rows) { length.reset(new int[rows]); }
+  virtual void allocateLength(int rows) { length = new int[rows]; }
+  /// Deallocate #length.
+  virtual void deallocateLength() { delete[] length; }
   /// Allocate #index and #data.
   virtual void allocateIndexAndData() {
-    index.reset(new int[elements]);
-    data.reset(new floatType[elements]);
+    index = new int[elements];
+    data = new floatType[elements];
+  }
+  /// Deallocate #index and #data.
+  virtual void deallocateIndexAndData() {
+    delete[] index;
+    delete[] data;
   }
 };
 

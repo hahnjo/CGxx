@@ -15,9 +15,9 @@ class CGOpenMPTarget : public CG {
   floatType *getVector(Vector v) {
     switch (v) {
     case VectorK:
-      return k.get();
+      return k;
     case VectorX:
-      return x.get();
+      return x;
     case VectorP:
       return p.get();
     case VectorQ:
@@ -83,24 +83,24 @@ void CGOpenMPTarget::doTransferTo() {
   floatType *p = this->p.get();
   floatType *q = this->q.get();
   floatType *r = this->r.get();
-  floatType *x = this->x.get();
-  floatType *k = this->k.get();
+  floatType *x = this->x;
+  floatType *k = this->k;
 
   #pragma omp target enter data map(alloc: p[0:N], q[0:N], r[0:N]) \
                                 map(to: x[0:N], k[0:N])
   switch (matrixFormat) {
   case MatrixFormatCRS: {
-    int *ptr = matrixCRS->ptr.get();
-    int *index = matrixCRS->index.get();
-    floatType *value = matrixCRS->value.get();
+    int *ptr = matrixCRS->ptr;
+    int *index = matrixCRS->index;
+    floatType *value = matrixCRS->value;
     #pragma omp target enter data map(to: ptr[0:N+1], index[0:nz], value[0:nz])
     break;
   }
   case MatrixFormatELL: {
     int elements = matrixELL->elements;
-    int *length = matrixELL->length.get();
-    int *index = matrixELL->index.get();
-    floatType *data = matrixELL->data.get();
+    int *length = matrixELL->length;
+    int *index = matrixELL->index;
+    floatType *data = matrixELL->data;
     #pragma omp target enter data map(to: length[0:N]) \
                                   map(to: index[0:elements], data[0:elements])
     break;
@@ -114,7 +114,7 @@ void CGOpenMPTarget::doTransferTo() {
 
     switch (preconditioner) {
     case PreconditionerJacobi: {
-      floatType *C = jacobi->C.get();
+      floatType *C = jacobi->C;
       #pragma omp target enter data map(to: C[0:N])
       break;
     }
@@ -130,25 +130,25 @@ void CGOpenMPTarget::doTransferFrom() {
   floatType *p = this->p.get();
   floatType *q = this->q.get();
   floatType *r = this->r.get();
-  floatType *x = this->x.get();
-  floatType *k = this->k.get();
+  floatType *x = this->x;
+  floatType *k = this->k;
 
   #pragma omp target exit data map(release: p[0:N], q[0:N], r[0:N], k[0:N]) \
                                map(from: x[0:N])
   switch (matrixFormat) {
   case MatrixFormatCRS: {
-    int *ptr = matrixCRS->ptr.get();
-    int *index = matrixCRS->index.get();
-    floatType *value = matrixCRS->value.get();
+    int *ptr = matrixCRS->ptr;
+    int *index = matrixCRS->index;
+    floatType *value = matrixCRS->value;
     #pragma omp target exit data map(release: ptr[0:N+1]) \
                                  map(release: index[0:nz], value[0:nz])
     break;
   }
   case MatrixFormatELL: {
     int elements = matrixELL->elements;
-    int *length = matrixELL->length.get();
-    int *index = matrixELL->index.get();
-    floatType *data = matrixELL->data.get();
+    int *length = matrixELL->length;
+    int *index = matrixELL->index;
+    floatType *data = matrixELL->data;
     #pragma omp target exit data map(release: length[0:N]) \
                                  map(release: index[0:elements]) \
                                  map(release: data[0:elements])
@@ -163,7 +163,7 @@ void CGOpenMPTarget::doTransferFrom() {
 
     switch (preconditioner) {
     case PreconditionerJacobi: {
-      floatType *C = jacobi->C.get();
+      floatType *C = jacobi->C;
       #pragma omp target exit data map(release: C[0:N])
       break;
     }
@@ -187,9 +187,9 @@ void CGOpenMPTarget::cpy(Vector _dst, Vector _src) {
 void CGOpenMPTarget::matvecKernelCRS(floatType *x, floatType *y) {
   int N = this->N;
   int nz = this->nz;
-  int *ptr = matrixCRS->ptr.get();
-  int *index = matrixCRS->index.get();
-  floatType *value = matrixCRS->value.get();
+  int *ptr = matrixCRS->ptr;
+  int *index = matrixCRS->index;
+  floatType *value = matrixCRS->value;
 
 #pragma omp target teams distribute parallel for simd map(x[0:N], y[0:N]) \
                    map(ptr[0:N+1], index[0:nz], value[0:nz])
@@ -205,9 +205,9 @@ void CGOpenMPTarget::matvecKernelCRS(floatType *x, floatType *y) {
 void CGOpenMPTarget::matvecKernelELL(floatType *x, floatType *y) {
   int N = this->N;
   int elements = matrixELL->elements;
-  int *length = matrixELL->length.get();
-  int *index = matrixELL->index.get();
-  floatType *data = matrixELL->data.get();
+  int *length = matrixELL->length;
+  int *index = matrixELL->index;
+  floatType *data = matrixELL->data;
 
 #pragma omp target teams distribute parallel for simd map(x[0:N], y[0:N]) \
                    map(length[0:N], index[0:elements], data[0:elements])
@@ -277,7 +277,7 @@ floatType CGOpenMPTarget::vectorDotKernel(Vector _a, Vector _b) {
 void CGOpenMPTarget::applyPreconditionerKernelJacobi(floatType *x,
                                                      floatType *y) {
   int N = this->N;
-  floatType *C = jacobi->C.get();
+  floatType *C = jacobi->C;
 
 #pragma omp target teams distribute parallel for simd \
                    map(x[0:N], y[0:N], C[0:N])

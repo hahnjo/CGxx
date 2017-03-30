@@ -123,7 +123,7 @@ MatrixELL::MatrixELL(const MatrixCOO &coo) {
 
   // Copy over already collected nonzeros per row.
   allocateLength(N);
-  std::memcpy(length.get(), coo.nzPerRow.get(), sizeof(int) * N);
+  std::memcpy(length, coo.nzPerRow.get(), sizeof(int) * N);
 
   // Temporary memory to store current offset in index / value per row.
   std::unique_ptr<int[]> offsets(new int[N]);
