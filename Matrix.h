@@ -37,7 +37,7 @@ struct MatrixCOO : Matrix {
 };
 
 /// Data for storing a matrix in CRS format.
-struct MatrixCRSData {
+struct MatrixDataCRS {
   /// Start index in #index and #value for a given row.
   int *ptr;
   /// Array of column indices.
@@ -45,7 +45,7 @@ struct MatrixCRSData {
   /// Values in the matrix.
   floatType *value;
 
-  ~MatrixCRSData() {
+  ~MatrixDataCRS() {
     deallocatePtr();
     deallocateIndexAndValue();
   }
@@ -66,29 +66,8 @@ struct MatrixCRSData {
   }
 };
 
-/// %Matrix stored in CRS format.
-struct MatrixCRS : Matrix, MatrixCRSData {
-  MatrixCRS() = delete;
-  /// Convert \a coo into CRS format.
-  MatrixCRS(const MatrixCOO &coo);
-};
-
-/// %Matrix stored in CRS format, split for a WorkDistribution.
-struct SplitMatrixCRS : Matrix {
-  /// Data for each chunk of the WorkDistribution.
-  std::unique_ptr<MatrixCRSData[]> data;
-
-  SplitMatrixCRS() = delete;
-  /// Convert \a coo into CRS format and split based on \a wd.
-  SplitMatrixCRS(const MatrixCOO &coo, const WorkDistribution &wd);
-
-  virtual void allocateData(int numberOfChunks) {
-    data.reset(new MatrixCRSData[numberOfChunks]);
-  }
-};
-
 /// Data for storing a matrix in ELLPACK format.
-struct MatrixELLData {
+struct MatrixDataELL {
   /// Maximum number of nonzeros in a row.
   /// @see MatrixCOO#getMaxNz()
   int maxNz;
@@ -102,7 +81,7 @@ struct MatrixELLData {
   /// Data in the matrix.
   floatType *data;
 
-  ~MatrixELLData() {
+  ~MatrixDataELL() {
     deallocateLength();
     deallocateIndexAndData();
   }
@@ -123,25 +102,30 @@ struct MatrixELLData {
   }
 };
 
-/// %Matrix stored in ELLPACK format.
-struct MatrixELL : Matrix, MatrixELLData {
-  MatrixELL() = delete;
-  /// Convert \a coo into ELLPACK format.
-  MatrixELL(const MatrixCOO &coo);
+/// %Matrix with specified data.
+template <class Data> struct DataMatrix : Matrix, Data {
+  DataMatrix() = delete;
+  /// Convert \a coo.
+  DataMatrix(const MatrixCOO &coo);
 };
+using MatrixCRS = DataMatrix<MatrixDataCRS>;
+using MatrixELL = DataMatrix<MatrixDataELL>;
 
-/// %Matrix stored in ELLPACK format, split for a WorkDistribution.
-struct SplitMatrixELL : Matrix {
+/// %Matrix split for a WorkDistribution.
+template <class Data> struct SplitMatrix : Matrix {
   /// Data for each chunk of the WorkDistribution.
-  std::unique_ptr<MatrixELLData[]> data;
+  std::unique_ptr<Data[]> data;
 
-  SplitMatrixELL() = delete;
-  /// Convert \a coo into ELLPACK format and split based on \a wd.
-  SplitMatrixELL(const MatrixCOO &coo, const WorkDistribution &wd);
+  SplitMatrix() = delete;
+  /// Convert \a coo and split based on \a wd.
+  SplitMatrix(const MatrixCOO &coo, const WorkDistribution &wd);
 
+  /// Allocate #data.
   virtual void allocateData(int numberOfChunks) {
-    data.reset(new MatrixELLData[numberOfChunks]);
+    data.reset(new Data[numberOfChunks]);
   }
 };
+using SplitMatrixCRS = SplitMatrix<MatrixDataCRS>;
+using SplitMatrixELL = SplitMatrix<MatrixDataELL>;
 
 #endif

@@ -21,7 +21,7 @@ class CGMultiCUDA : public CGCUDABase {
         : SplitMatrixCRS(coo, wd) {}
 
     virtual void allocateData(int numberOfChunks) override {
-      data.reset((MatrixCRSData *)new MatrixCRSDataCUDA[numberOfChunks]);
+      data.reset((MatrixDataCRS *)new MatrixDataCRSCUDA[numberOfChunks]);
     }
   };
   struct SplitMatrixELLCUDA : SplitMatrixELL {
@@ -29,7 +29,7 @@ class CGMultiCUDA : public CGCUDABase {
         : SplitMatrixELL(coo, wd) {}
 
     virtual void allocateData(int numberOfChunks) override {
-      data.reset((MatrixELLData *)new MatrixELLDataCUDA[numberOfChunks]);
+      data.reset((MatrixDataELL *)new MatrixDataELLCUDA[numberOfChunks]);
     }
   };
 

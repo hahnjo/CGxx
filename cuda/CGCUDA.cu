@@ -8,10 +8,10 @@
 
 /// Class implementing parallel kernels with CUDA.
 class CGCUDA : public CGCUDABase {
-  struct MatrixCRSCUDA : MatrixCRS, MatrixCRSDataCUDA {
+  struct MatrixCRSCUDA : MatrixCRS, MatrixDataCRSCUDA {
     MatrixCRSCUDA(const MatrixCOO &coo) : MatrixCRS(coo) {}
   };
-  struct MatrixELLCUDA : MatrixELL, MatrixELLDataCUDA {
+  struct MatrixELLCUDA : MatrixELL, MatrixDataELLCUDA {
     MatrixELLCUDA(const MatrixCOO &coo) : MatrixELL(coo) {}
   };
 

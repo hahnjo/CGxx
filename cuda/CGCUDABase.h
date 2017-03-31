@@ -12,7 +12,7 @@
 class CGCUDABase : public CG {
 protected:
   /// Derived struct for pinned memory.
-  struct MatrixCRSDataCUDA : MatrixCRSData {
+  struct MatrixDataCRSCUDA : MatrixDataCRS {
     virtual void allocatePtr(int rows) override {
       checkedMallocHost(&ptr, sizeof(int) * (rows + 1));
     }
@@ -27,7 +27,7 @@ protected:
     }
   };
   /// Derived struct for pinned memory.
-  struct MatrixELLDataCUDA : MatrixELLData {
+  struct MatrixDataELLCUDA : MatrixDataELL {
     virtual void allocateLength(int rows) override {
       checkedMallocHost(&length, sizeof(int) * rows);
     }

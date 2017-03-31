@@ -91,7 +91,7 @@ int MatrixCOO::getMaxNz(int from, int to) const {
   return maxNz;
 }
 
-MatrixCRS::MatrixCRS(const MatrixCOO &coo) {
+template <> DataMatrix<MatrixDataCRS>::DataMatrix(const MatrixCOO &coo) {
   N = coo.N;
   nz = coo.nz;
 
@@ -118,8 +118,9 @@ MatrixCRS::MatrixCRS(const MatrixCOO &coo) {
   }
 }
 
-SplitMatrixCRS::SplitMatrixCRS(const MatrixCOO &coo,
-                               const WorkDistribution &wd) {
+template <>
+SplitMatrix<MatrixDataCRS>::SplitMatrix(const MatrixCOO &coo,
+                                        const WorkDistribution &wd) {
   N = coo.N;
   nz = coo.nz;
   allocateData(wd.numberOfChunks);
@@ -167,7 +168,7 @@ SplitMatrixCRS::SplitMatrixCRS(const MatrixCOO &coo,
   }
 }
 
-MatrixELL::MatrixELL(const MatrixCOO &coo) {
+template <> DataMatrix<MatrixDataELL>::DataMatrix(const MatrixCOO &coo) {
   N = coo.N;
   nz = coo.nz;
   elements = N * coo.getMaxNz();
@@ -191,8 +192,9 @@ MatrixELL::MatrixELL(const MatrixCOO &coo) {
   }
 }
 
-SplitMatrixELL::SplitMatrixELL(const MatrixCOO &coo,
-                               const WorkDistribution &wd) {
+template <>
+SplitMatrix<MatrixDataELL>::SplitMatrix(const MatrixCOO &coo,
+                                        const WorkDistribution &wd) {
   N = coo.N;
   nz = coo.nz;
   allocateData(wd.numberOfChunks);
