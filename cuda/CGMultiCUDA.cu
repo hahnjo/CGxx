@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <cassert>
 #include <iostream>
 #include <vector>
@@ -9,6 +10,12 @@
 
 /// Class implementing parallel kernels with CUDA.
 class CGMultiCUDA : public CGCUDABase {
+  enum GatherImpl {
+    GatherImplHost,
+    GatherImplDevice,
+    GatherImplP2P,
+  };
+
   struct SplitMatrixCRSCUDA : SplitMatrixCRS {
     SplitMatrixCRSCUDA(const MatrixCOO &coo, const WorkDistribution &wd)
         : SplitMatrixCRS(coo, wd) {}
@@ -31,7 +38,17 @@ class CGMultiCUDA : public CGCUDABase {
     CGMultiCUDA *cg;
 
     floatType vectorDotResult;
+    cudaStream_t gatherStream;
 
+    ~MultiDevice() { checkError(cudaStreamDestroy(gatherStream)); }
+
+    void init(int id, CGMultiCUDA *cg) {
+      this->id = id;
+      this->cg = cg;
+
+      setDevice();
+      checkError(cudaStreamCreate(&gatherStream));
+    }
     void setDevice() const { checkedSetDevice(id); }
 
     floatType *getVector(Vector v) const override {
@@ -50,11 +67,13 @@ class CGMultiCUDA : public CGCUDABase {
   };
 
   std::vector<MultiDevice> devices;
+  GatherImpl gatherImpl = GatherImplHost;
 
   floatType *p = nullptr;
 
   virtual int getNumberOfChunks() override { return devices.size(); }
 
+  virtual void parseEnvironment() override;
   virtual void init(const char *matrixFile) override;
 
   virtual void convertToSplitMatrixCRS() {
@@ -83,19 +102,56 @@ class CGMultiCUDA : public CGCUDABase {
   virtual void doTransferFrom() override;
 
   virtual void cpy(Vector _dst, Vector _src) override;
+
   void matvecGatherXViaHost(Vector _x);
+  void matvecGatherXOnDevices(Vector _x);
   virtual void matvecKernel(Vector _x, Vector _y) override;
+
   virtual void axpyKernel(floatType a, Vector _x, Vector _y) override;
   virtual void xpayKernel(Vector _x, floatType a, Vector _y) override;
   virtual floatType vectorDotKernel(Vector _a, Vector _b) override;
 
   virtual void applyPreconditionerKernel(Vector _x, Vector _y) override;
 
+  virtual void printSummary() override;
   virtual void cleanup() override {
     CG::cleanup();
-    checkedFreeHost(p);
+
+    if (gatherImpl == GatherImplHost) {
+      checkedFreeHost(p);
+    }
   }
 };
+
+const char *CG_CUDA_GATHER_IMPL = "CG_CUDA_GATHER_IMPL";
+const char *CG_CUDA_GATHER_IMPL_HOST = "host";
+const char *CG_CUDA_GATHER_IMPL_DEVICE = "device";
+const char *CG_CUDA_GATHER_IMPL_P2P = "p2p";
+
+void CGMultiCUDA::parseEnvironment() {
+  CG::parseEnvironment();
+
+  const char *env = std::getenv(CG_CUDA_GATHER_IMPL);
+  if (env != NULL && *env != 0) {
+    std::string lower(env);
+    std::transform(lower.begin(), lower.end(), lower.begin(),
+                   [](char c) { return std::tolower(c); });
+
+    if (lower == CG_CUDA_GATHER_IMPL_HOST) {
+      gatherImpl = GatherImplHost;
+    } else if (lower == CG_CUDA_GATHER_IMPL_DEVICE) {
+      gatherImpl = GatherImplDevice;
+    } else if (lower == CG_CUDA_GATHER_IMPL_P2P) {
+      gatherImpl = GatherImplP2P;
+    } else {
+      std::cerr << "Invalid value for " << CG_CUDA_GATHER_IMPL << "! ("
+                << CG_CUDA_GATHER_IMPL_HOST << ", "
+                << CG_CUDA_GATHER_IMPL_DEVICE << ", or "
+                << CG_CUDA_GATHER_IMPL_P2P << ")" << std::endl;
+      std::exit(1);
+    }
+  }
+}
 
 void CGMultiCUDA::init(const char *matrixFile) {
   int numberOfDevices;
@@ -105,12 +161,35 @@ void CGMultiCUDA::init(const char *matrixFile) {
     std::exit(1);
   }
   devices.resize(numberOfDevices);
-
-  // Set each device once for initialization.
   for (int d = 0; d < numberOfDevices; d++) {
-    devices[d].id = d;
-    devices[d].cg = this;
-    devices[d].setDevice();
+    devices[d].init(d, this);
+  }
+
+  // Set each device once for initialization. Enable peer access if requested,
+  // or abort if not available.
+  // NOTE: cudaDeviceEnablePeerAccess() is unidirectional, so it has to be
+  // called once for each direction, twice per combination!
+  for (MultiDevice &device : devices) {
+    device.setDevice();
+
+    if (gatherImpl == GatherImplP2P) {
+      for (MultiDevice &peerDevice : devices) {
+        if (peerDevice.id == device.id) {
+          continue;
+        }
+
+        int canAccessPeer;
+        checkError(
+            cudaDeviceCanAccessPeer(&canAccessPeer, device.id, peerDevice.id));
+        if (!canAccessPeer) {
+          std::cerr << "Device " << device.id << " cannot access "
+                    << peerDevice.id << "!" << std::endl;
+          std::exit(1);
+        }
+
+        checkError(cudaDeviceEnablePeerAccess(peerDevice.id, 0));
+      }
+    }
   }
 
   CG::init(matrixFile);
@@ -121,7 +200,9 @@ void CGMultiCUDA::init(const char *matrixFile) {
     devices[i].calculateLaunchConfiguration(length);
   }
 
-  checkedMallocHost(&p, sizeof(floatType) * N);
+  if (gatherImpl == GatherImplHost) {
+    checkedMallocHost(&p, sizeof(floatType) * N);
+  }
 }
 
 void CGMultiCUDA::synchronizeAllDevices() {
@@ -304,7 +385,7 @@ void CGMultiCUDA::matvecGatherXViaHost(Vector _x) {
     floatType *x = device.getVector(_x);
 
     checkedMemcpyAsync(xHost + offset, x, sizeof(floatType) * length,
-                       cudaMemcpyDeviceToHost);
+                       cudaMemcpyDeviceToHost, device.gatherStream);
   }
   synchronizeAllDevices();
 
@@ -323,14 +404,48 @@ void CGMultiCUDA::matvecGatherXViaHost(Vector _x) {
       int length = workDistribution->lengths[src.id];
 
       checkedMemcpyAsyncToDevice(x + offset, xHost + offset,
-                                 sizeof(floatType) * length);
+                                 sizeof(floatType) * length,
+                                 device.gatherStream);
     }
   }
   synchronizeAllDevices();
 }
 
+void CGMultiCUDA::matvecGatherXOnDevices(Vector _x) {
+  for (MultiDevice &device : devices) {
+    device.setDevice();
+    floatType *x = device.getVector(_x, /* forMatvec= */ true);
+
+    for (MultiDevice &src : devices) {
+      if (src.id == device.id) {
+        // Don't transfer chunk that is already on the device.
+        continue;
+      }
+
+      int offset = workDistribution->offsets[src.id];
+      int length = workDistribution->lengths[src.id];
+      floatType *xSrc = src.getVector(_x, /* forMatvec= */ true);
+
+      checkedMemcpyAsync(x + offset, xSrc + offset, sizeof(floatType) * length,
+                         cudaMemcpyDeviceToDevice, device.gatherStream);
+    }
+  }
+
+  synchronizeAllDevices();
+}
+
 void CGMultiCUDA::matvecKernel(Vector _x, Vector _y) {
-  matvecGatherXViaHost(_x);
+  switch (gatherImpl) {
+  case GatherImplHost:
+    matvecGatherXViaHost(_x);
+    break;
+  case GatherImplDevice:
+  case GatherImplP2P:
+    matvecGatherXOnDevices(_x);
+    break;
+  default:
+    assert(0 && "Invalid gather implementation!");
+  }
 
   for (MultiDevice &device : devices) {
     device.setDevice();
@@ -446,6 +561,26 @@ void CGMultiCUDA::applyPreconditionerKernel(Vector _x, Vector _y) {
   }
 
   synchronizeAllDevices();
+}
+
+void CGMultiCUDA::printSummary() {
+  CG::printSummary();
+
+  std::cout << std::endl;
+  std::string gatherImplName;
+  switch (gatherImpl) {
+  case GatherImplHost:
+    gatherImplName = "via host";
+    break;
+  case GatherImplDevice:
+    gatherImplName = "between devices, but no peer-to-peer";
+    break;
+  case GatherImplP2P:
+    gatherImplName = "peer-to-peer (NVLink)";
+    break;
+  }
+  assert(gatherImplName.length() > 0);
+  printPadded("Gather implementation:", gatherImplName);
 }
 
 CG *CG::getInstance() { return new CGMultiCUDA; }
