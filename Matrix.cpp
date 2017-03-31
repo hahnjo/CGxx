@@ -152,15 +152,7 @@ SplitMatrix<MatrixDataCRS>::SplitMatrix(const MatrixCOO &coo,
   // Construct index and value for all chunks.
   for (int i = 0; i < nz; i++) {
     int row = coo.I[i];
-
-    // Find corresponding chunk, linear search should be fine here...
-    int chunk;
-    for (chunk = 0; chunk < wd.numberOfChunks; chunk++) {
-      if (row < wd.offsets[chunk] + wd.lengths[chunk]) {
-        break;
-      }
-    }
-    assert(chunk != wd.numberOfChunks && "Should have found a chunk!");
+    int chunk = wd.findChunk(row);
 
     data[chunk].index[offsets[row]] = coo.J[i];
     data[chunk].value[offsets[row]] = coo.V[i];
@@ -221,15 +213,7 @@ SplitMatrix<MatrixDataELL>::SplitMatrix(const MatrixCOO &coo,
   // Construct column and data for all chunks.
   for (int i = 0; i < nz; i++) {
     int row = coo.I[i];
-
-    // Find corresponding chunk, linear search should be fine here...
-    int chunk;
-    for (chunk = 0; chunk < wd.numberOfChunks; chunk++) {
-      if (row < wd.offsets[chunk] + wd.lengths[chunk]) {
-        break;
-      }
-    }
-    assert(chunk != wd.numberOfChunks && "Should have found a chunk!");
+    int chunk = wd.findChunk(row);
 
     int k = offsets[row] * wd.lengths[chunk] + row - wd.offsets[chunk];
     data[chunk].index[k] = coo.J[i];

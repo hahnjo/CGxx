@@ -18,6 +18,9 @@ struct WorkDistribution {
       : numberOfChunks(numberOfChunks), offsets(std::move(offsets)),
         lengths(std::move(lengths)) {}
 
+  /// @return chunk that contains \a row.
+  int findChunk(int row) const;
+
   /// @return a distribution where each chunk received roughly the same number
   /// of rows.
   static WorkDistribution *calculateByRow(int N, int numberOfChunks);
