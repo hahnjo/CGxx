@@ -52,6 +52,14 @@ public:
     PreconditionerJacobi,
   };
 
+  /// Different calculations of #workDistribution.
+  enum WorkDistributionCalc {
+    /// @see WorkDistribution.calculateByRow()
+    WorkDistributionByRow,
+    /// @see WorkDistribution.calculateByNz()
+    WorkDistributionByNz,
+  };
+
 private:
   int iteration;
   int maxIterations = 1000;
@@ -120,6 +128,8 @@ protected:
   /// Nonzeros in the matrix.
   int nz;
 
+  /// Way to calculate #workDistribution.
+  WorkDistributionCalc workDistributionCalc = WorkDistributionByRow;
   /// How the work is distributed into multiple chunks.
   std::unique_ptr<WorkDistribution> workDistribution;
   /// Whether to overlap the gather with some computation of matvec().

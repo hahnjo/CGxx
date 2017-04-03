@@ -24,6 +24,10 @@ const char *CG_PRECONDITIONER = "CG_PRECONDITIONER";
 const char *CG_PRECONDITIONER_NONE = "none";
 const char *CG_PRECONDITIONER_JACOBI = "jacobi";
 
+const char *CG_WORK_DISTRIBUTION = "CG_WORK_DISTRIBUTION";
+const char *CG_WORK_DISTRIBUTION_BY_ROW = "row";
+const char *CG_WORK_DISTRIBUTION_BY_NZ = "nz";
+
 const char *CG_OVERLAPPED_GATHER = "CG_OVERLAPPED_GATHER";
 
 void CG::parseEnvironment() {
@@ -101,6 +105,24 @@ void CG::parseEnvironment() {
     }
   }
 
+  env = std::getenv(CG_WORK_DISTRIBUTION);
+  if (env != NULL && *env != 0) {
+    std::string lower(env);
+    std::transform(lower.begin(), lower.end(), lower.begin(),
+                   [](char c) { return std::tolower(c); });
+
+    if (lower == CG_WORK_DISTRIBUTION_BY_ROW) {
+      workDistributionCalc = WorkDistributionByRow;
+    } else if (lower == CG_WORK_DISTRIBUTION_BY_NZ) {
+      workDistributionCalc = WorkDistributionByNz;
+    } else {
+      std::cerr << "Invalid value for " << CG_WORK_DISTRIBUTION << "! ("
+                << CG_WORK_DISTRIBUTION_BY_ROW << ", or "
+                << CG_WORK_DISTRIBUTION_BY_NZ << ")" << std::endl;
+      std::exit(1);
+    }
+  }
+
   env = std::getenv(CG_OVERLAPPED_GATHER);
   if (env != NULL && *env != 0) {
     overlappedGather = (std::string(env) != "0");
@@ -126,7 +148,16 @@ void CG::init(const char *matrixFile) {
   // Does this implementation need a work distribution?
   int numberOfChunks = getNumberOfChunks();
   if (numberOfChunks != -1) {
-    workDistribution.reset(WorkDistribution::calculateByRow(N, numberOfChunks));
+    switch (workDistributionCalc) {
+    case WorkDistributionByRow:
+      workDistribution.reset(
+          WorkDistribution::calculateByRow(N, numberOfChunks));
+      break;
+    case WorkDistributionByNz:
+      workDistribution.reset(
+          WorkDistribution::calculateByNz(*matrixCOO, numberOfChunks));
+      break;
+    }
   }
 
   // Eventually transform the matrix into requested format.
@@ -353,8 +384,20 @@ void CG::printSummary() {
   assert(preconditionerName.length() > 0);
   printPadded("Preconditioner:", preconditionerName);
   if (workDistribution.get() != nullptr) {
+    std::string workDistributionName;
+    switch (workDistributionCalc) {
+    case WorkDistributionByRow:
+      workDistributionName = "by row";
+      break;
+    case WorkDistributionByNz:
+      workDistributionName = "by nonzeros";
+      break;
+    }
+    assert(workDistributionName.length() > 0);
+    printPadded("Work distribution:", workDistributionName);
     printPadded("Number of chunks:",
                 std::to_string(workDistribution->numberOfChunks));
+
     if (overlappedGather) {
       std::cout << "Overlapped gather with computation!" << std::endl;
     }

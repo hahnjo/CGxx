@@ -3,6 +3,9 @@
 
 #include <memory>
 
+// Forward declaration to not include Matrix.h
+struct MatrixCOO;
+
 /// Chunks for distributing the work.
 struct WorkDistribution {
   /// Number of chunks represented by this structure.
@@ -29,6 +32,11 @@ struct WorkDistribution {
   /// @return a distribution where each chunk received roughly the same number
   /// of rows.
   static WorkDistribution *calculateByRow(int N, int numberOfChunks);
+
+  /// @return a distribution where each chunk received roughly the same amount
+  /// of nonzeros.
+  static WorkDistribution *calculateByNz(const MatrixCOO &coo,
+                                         int numberOfChunks);
 };
 
 #endif

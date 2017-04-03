@@ -3,8 +3,10 @@
 
 #include <memory>
 
-#include "WorkDistribution.h"
 #include "def.h"
+
+// Forward declaration to not include WorkDistribution.h
+struct WorkDistribution;
 
 /// Base class for storing a sparse matrix.
 struct Matrix {
