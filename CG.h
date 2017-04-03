@@ -36,9 +36,11 @@ public:
   enum MatrixFormat {
     /// %Matrix is represented by CG#matrixCOO.
     MatrixFormatCOO,
-    /// %Matrix is represented by either CG#matrixCRS or CG#splitMatrixCRS.
+    /// %Matrix is represented by either CG#matrixCRS, CG#splitMatrixCRS, or
+    /// CG#partitionedMatrixCRS.
     MatrixFormatCRS,
-    /// %Matrix is represented by either CG#matrixELL or CG#splitMatrixELL.
+    /// %Matrix is represented by either CG#matrixELL, CG#splitMatrixELL, or
+    /// CG#partitionedMatrixELL.
     MatrixFormatELL,
   };
 
@@ -120,6 +122,8 @@ protected:
 
   /// How the work is distributed into multiple chunks.
   std::unique_ptr<WorkDistribution> workDistribution;
+  /// Whether to overlap the gather with some computation of matvec().
+  bool overlappedGather = false;
 
   /// Format to store the matrix.
   MatrixFormat matrixFormat;
@@ -135,8 +139,13 @@ protected:
   /// Matrix in ELLPACK format, split for #workDistribution.
   std::unique_ptr<SplitMatrixELL> splitMatrixELL;
 
+  /// Matrix in CRS format, partitioned for #workDistribution.
+  std::unique_ptr<PartitionedMatrixCRS> partitionedMatrixCRS;
+  /// Matrix in ELLPACK format, partitioned for #workDistribution.
+  std::unique_ptr<PartitionedMatrixELL> partitionedMatrixELL;
+
   /// The preconditioner to use.
-  Preconditioner preconditioner = PreconditionerNone;
+  Preconditioner preconditioner;
   /// Jacobi preconditioner.
   std::unique_ptr<Jacobi> jacobi;
 
@@ -145,12 +154,12 @@ protected:
   /// #VectorX
   floatType *x = nullptr;
 
-  /// Construct a new object with a \a defaultMatrixFormat to store the matrix.
-  CG(MatrixFormat defaultMatrixFormat) : matrixFormat(defaultMatrixFormat) {}
   /// Construct a new object with a \a defaultMatrixFormat to store tha matrix
   /// and a \a defaultPreconditioner to use.
-  CG(MatrixFormat defaultMatrixFormat, Preconditioner defaultPreconditioner)
-      : matrixFormat(defaultMatrixFormat),
+  CG(MatrixFormat defaultMatrixFormat,
+     Preconditioner defaultPreconditioner = PreconditionerNone,
+     bool overlappedGather = false)
+      : overlappedGather(overlappedGather), matrixFormat(defaultMatrixFormat),
         preconditioner(defaultPreconditioner) {}
 
   /// @return \a true if this implementation supports \a format to store the matrix.
@@ -163,6 +172,9 @@ protected:
   /// @return the number of chunks that the work should be split into, or -1
   /// if no work distributition is necessary.
   virtual int getNumberOfChunks() { return -1; }
+  /// @return \a true if this implementation supports overlapping the gather
+  /// with some computation of matvec().
+  virtual bool supportsOverlappedGather() { return false; }
 
   /// Convert to MatrixCRS.
   virtual void convertToMatrixCRS() {
@@ -179,6 +191,16 @@ protected:
   /// Convert to SplitMatrixELL.
   virtual void convertToSplitMatrixELL() {
     splitMatrixELL.reset(new SplitMatrixELL(*matrixCOO, *workDistribution));
+  }
+  /// Convert to PartitionedMatrixCRS.
+  virtual void convertToPartitionedMatrixCRS() {
+    partitionedMatrixCRS.reset(
+        new PartitionedMatrixCRS(*matrixCOO, *workDistribution));
+  }
+  /// Convert to PartitionedMatrixELL.
+  virtual void convertToPartitionedMatrixELL() {
+    partitionedMatrixELL.reset(
+        new PartitionedMatrixELL(*matrixCOO, *workDistribution));
   }
 
   /// Initialize the Jacobi preconditioner.

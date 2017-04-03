@@ -24,6 +24,8 @@ const char *CG_PRECONDITIONER = "CG_PRECONDITIONER";
 const char *CG_PRECONDITIONER_NONE = "none";
 const char *CG_PRECONDITIONER_JACOBI = "jacobi";
 
+const char *CG_OVERLAPPED_GATHER = "CG_OVERLAPPED_GATHER";
+
 void CG::parseEnvironment() {
   const char *env;
   char *endptr;
@@ -98,6 +100,16 @@ void CG::parseEnvironment() {
       std::exit(1);
     }
   }
+
+  env = std::getenv(CG_OVERLAPPED_GATHER);
+  if (env != NULL && *env != 0) {
+    overlappedGather = (std::string(env) != "0");
+    if (overlappedGather &&
+        (getNumberOfChunks() == -1 || !supportsOverlappedGather())) {
+      std::cerr << "No support for overlapped gather!" << std::endl;
+      std::exit(1);
+    }
+  }
 }
 
 void CG::init(const char *matrixFile) {
@@ -125,20 +137,28 @@ void CG::init(const char *matrixFile) {
     if (numberOfChunks == -1) {
       std::cout << "Converting matrix to CRS format..." << std::endl;
       convertToMatrixCRS();
-    } else {
+    } else if (!overlappedGather) {
       std::cout << "Converting and splitting matrix in CRS format..."
                 << std::endl;
       convertToSplitMatrixCRS();
+    } else {
+      std::cout << "Converting and partitioning matrix in CRS format..."
+                << std::endl;
+      convertToPartitionedMatrixCRS();
     }
     break;
   case MatrixFormatELL:
     if (numberOfChunks == -1) {
       std::cout << "Converting matrix to ELL format..." << std::endl;
       convertToMatrixELL();
-    } else {
+    } else if (!overlappedGather) {
       std::cout << "Converting and splitting matrix in ELL format..."
                 << std::endl;
       convertToSplitMatrixELL();
+    } else {
+      std::cout << "Converting and partitioning matrix in ELL format..."
+                << std::endl;
+      convertToPartitionedMatrixELL();
     }
     break;
   }
@@ -330,6 +350,13 @@ void CG::printSummary() {
   }
   assert(preconditionerName.length() > 0);
   printPadded("Preconditioner:", preconditionerName);
+  if (workDistribution.get() != nullptr) {
+    printPadded("Number of chunks:",
+                std::to_string(workDistribution->numberOfChunks));
+    if (overlappedGather) {
+      std::cout << "Overlapped gather with computation!" << std::endl;
+    }
+  }
 
   std::cout << std::endl;
   printPadded("IO time:", std::to_string(timing.io.count()));

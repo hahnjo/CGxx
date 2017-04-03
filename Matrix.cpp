@@ -91,6 +91,25 @@ int MatrixCOO::getMaxNz(int from, int to) const {
   return maxNz;
 }
 
+void MatrixCOO::countNz(const WorkDistribution &wd,
+                        std::unique_ptr<int[]> &nzDiag,
+                        std::unique_ptr<int[]> &nzMinor) const {
+  // Allocate temporary memory.
+  nzDiag.reset(new int[N]);
+  nzMinor.reset(new int[N]);
+
+  for (int i = 0; i < nz; i++) {
+    int row = I[i];
+    int chunk = wd.findChunk(row);
+
+    if (wd.isOnDiagonal(chunk, J[i])) {
+      nzDiag[row]++;
+    } else {
+      nzMinor[row]++;
+    }
+  }
+}
+
 template <> DataMatrix<MatrixDataCRS>::DataMatrix(const MatrixCOO &coo) {
   N = coo.N;
   nz = coo.nz;
@@ -160,6 +179,69 @@ SplitMatrix<MatrixDataCRS>::SplitMatrix(const MatrixCOO &coo,
   }
 }
 
+template <>
+PartitionedMatrix<MatrixDataCRS>::PartitionedMatrix(
+    const MatrixCOO &coo, const WorkDistribution &wd) {
+  N = coo.N;
+  nz = coo.nz;
+  allocateDiagAndMinor(wd.numberOfChunks);
+
+  // Temporary memory to count nonzeros per row.
+  std::unique_ptr<int[]> nzDiag, nzMinor;
+  coo.countNz(wd, nzDiag, nzMinor);
+
+  // Temporary memory to store current offset in index / value per row.
+  std::unique_ptr<int[]> offsetsDiag(new int[N]);
+  std::unique_ptr<int[]> offsetsMinor(new int[N]);
+
+  // Construct ptr and initial values for offsets for each chunk.
+  for (int c = 0; c < wd.numberOfChunks; c++) {
+    int offset = wd.offsets[c];
+    int length = wd.lengths[c];
+
+    diag[c].allocatePtr(length);
+    minor[c].allocatePtr(length);
+
+    diag[c].ptr[0] = 0;
+    minor[c].ptr[0] = 0;
+
+    for (int i = 1; i <= length; i++) {
+      offsetsDiag[offset + i - 1] = diag[c].ptr[i - 1];
+      offsetsMinor[offset + i - 1] = minor[c].ptr[i - 1];
+
+      diag[c].ptr[i] = diag[c].ptr[i - 1] + nzDiag[offset + i - 1];
+      minor[c].ptr[i] = minor[c].ptr[i - 1] + nzMinor[offset + i - 1];
+    }
+  }
+
+  // Allocate index and value for each chunk.
+  for (int c = 0; c < wd.numberOfChunks; c++) {
+    int length = wd.lengths[c];
+    int valuesDiag = diag[c].ptr[length];
+    int valuesMinor = diag[c].ptr[length];
+
+    diag[c].allocateIndexAndValue(valuesDiag);
+    minor[c].allocateIndexAndValue(valuesMinor);
+  }
+
+  // Construct index and value for all chunks.
+  for (int i = 0; i < nz; i++) {
+    int row = coo.I[i];
+    int column = coo.J[i];
+    int chunk = wd.findChunk(row);
+
+    if (wd.isOnDiagonal(chunk, column)) {
+      diag[chunk].index[offsetsDiag[row]] = column;
+      diag[chunk].value[offsetsDiag[row]] = coo.V[i];
+      offsetsDiag[row]++;
+    } else {
+      minor[chunk].index[offsetsMinor[row]] = column;
+      minor[chunk].value[offsetsMinor[row]] = coo.V[i];
+      offsetsMinor[row]++;
+    }
+  }
+}
+
 template <> DataMatrix<MatrixDataELL>::DataMatrix(const MatrixCOO &coo) {
   N = coo.N;
   nz = coo.nz;
@@ -219,5 +301,68 @@ SplitMatrix<MatrixDataELL>::SplitMatrix(const MatrixCOO &coo,
     data[chunk].index[k] = coo.J[i];
     data[chunk].data[k] = coo.V[i];
     offsets[row]++;
+  }
+}
+
+template <>
+PartitionedMatrix<MatrixDataELL>::PartitionedMatrix(
+    const MatrixCOO &coo, const WorkDistribution &wd) {
+  N = coo.N;
+  nz = coo.nz;
+  allocateDiagAndMinor(wd.numberOfChunks);
+
+  // Temporary memory to count nonzeros per row.
+  std::unique_ptr<int[]> nzDiag, nzMinor;
+  coo.countNz(wd, nzDiag, nzMinor);
+
+  // Allocate length for each chunk.
+  for (int c = 0; c < wd.numberOfChunks; c++) {
+    int offset = wd.offsets[c];
+    int length = wd.lengths[c];
+    int maxNzDiag = 0, maxNzMinor = 0;
+    for (int i = offset; i < offset + length; i++) {
+      if (nzDiag[i] > maxNzDiag) {
+        maxNzDiag = nzDiag[i];
+      }
+      if (nzMinor[i] > maxNzMinor) {
+        maxNzMinor = nzMinor[i];
+      }
+    }
+
+    // Copy over already collected nonzeros per row.
+    diag[c].allocateLength(length);
+    std::memcpy(diag[c].length, nzDiag.get() + offset, sizeof(int) * length);
+    minor[c].allocateLength(length);
+    std::memcpy(minor[c].length, nzMinor.get() + offset, sizeof(int) * length);
+
+    diag[c].elements = maxNzDiag * length;
+    diag[c].allocateIndexAndData();
+    minor[c].elements = maxNzMinor * length;
+    minor[c].allocateIndexAndData();
+  }
+
+  // Temporary memory to store current offset in index / value per row.
+  std::unique_ptr<int[]> offsetsDiag(new int[N]);
+  std::memset(offsetsDiag.get(), 0, sizeof(int) * N);
+  std::unique_ptr<int[]> offsetsMinor(new int[N]);
+  std::memset(offsetsMinor.get(), 0, sizeof(int) * N);
+
+  // Construct column and data for all chunks.
+  for (int i = 0; i < nz; i++) {
+    int row = coo.I[i];
+    int column = coo.J[i];
+    int chunk = wd.findChunk(row);
+
+    if (wd.isOnDiagonal(chunk, column)) {
+      int k = offsetsDiag[row] * wd.lengths[chunk] + row - wd.offsets[chunk];
+      diag[chunk].index[k] = coo.J[i];
+      diag[chunk].data[k] = coo.V[i];
+      offsetsDiag[row]++;
+    } else {
+      int k = offsetsMinor[row] * wd.lengths[chunk] + row - wd.offsets[chunk];
+      minor[chunk].index[k] = coo.J[i];
+      minor[chunk].data[k] = coo.V[i];
+      offsetsMinor[row]++;
+    }
   }
 }

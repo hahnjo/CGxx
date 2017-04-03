@@ -34,6 +34,10 @@ struct MatrixCOO : Matrix {
   int getMaxNz() const { return getMaxNz(0, N); }
   /// Get maximum number of nonzeros in a row between \a from and \a to.
   int getMaxNz(int from, int to) const;
+
+  /// @return number of nonzeros for each chunk in \a wd.
+  void countNz(const WorkDistribution &wd, std::unique_ptr<int[]> &nzDiag,
+               std::unique_ptr<int[]> &nzMinor) const;
 };
 
 /// Data for storing a matrix in CRS format.
@@ -127,5 +131,26 @@ template <class Data> struct SplitMatrix : Matrix {
 };
 using SplitMatrixCRS = SplitMatrix<MatrixDataCRS>;
 using SplitMatrixELL = SplitMatrix<MatrixDataELL>;
+
+/// %Matrix partitioned for a WorkDistribution.
+template <class Data> struct PartitionedMatrix : Matrix {
+  /// Data on the diagonal for each chunk of the WorkDistribution.
+  std::unique_ptr<Data[]> diag;
+
+  /// Data NOT on the diagonal for each chunk of the WorkDistribution.
+  std::unique_ptr<Data[]> minor;
+
+  PartitionedMatrix() = delete;
+  /// Convert \a coo and partition based on \a wd.
+  PartitionedMatrix(const MatrixCOO &coo, const WorkDistribution &wd);
+
+  /// Allocate #diag and #minor.
+  virtual void allocateDiagAndMinor(int numberOfChunks) {
+    diag.reset(new Data[numberOfChunks]);
+    minor.reset(new Data[numberOfChunks]);
+  }
+};
+using PartitionedMatrixCRS = PartitionedMatrix<MatrixDataCRS>;
+using PartitionedMatrixELL = PartitionedMatrix<MatrixDataELL>;
 
 #endif

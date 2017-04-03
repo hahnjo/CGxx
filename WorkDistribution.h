@@ -21,6 +21,11 @@ struct WorkDistribution {
   /// @return chunk that contains \a row.
   int findChunk(int row) const;
 
+  /// @return true if \a column is on the diagonal of \a chunk.
+  bool isOnDiagonal(int chunk, int column) const {
+    return offsets[chunk] <= column && column < offsets[chunk] + lengths[chunk];
+  }
+
   /// @return a distribution where each chunk received roughly the same number
   /// of rows.
   static WorkDistribution *calculateByRow(int N, int numberOfChunks);
