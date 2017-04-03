@@ -120,6 +120,9 @@ void CG::init(const char *matrixFile) {
   N = matrixCOO->N;
   nz = matrixCOO->nz;
 
+  // We count everything from now on as converting!
+  auto startConverting = now();
+
   // Does this implementation need a work distribution?
   int numberOfChunks = getNumberOfChunks();
   if (numberOfChunks != -1) {
@@ -127,7 +130,6 @@ void CG::init(const char *matrixFile) {
   }
 
   // Eventually transform the matrix into requested format.
-  auto startConverting = now();
   switch (matrixFormat) {
   case MatrixFormatCOO:
     // Nothing to be done.
