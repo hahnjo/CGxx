@@ -98,7 +98,13 @@ class CGMultiCUDA : public CGCUDABase {
 
   void synchronizeAllDevices();
 
+  void allocateAndCopyMatrixDataCRS(int length, const MatrixDataCRS &data,
+                                    Device::MatrixCRSDevice &deviceMatrix);
+  void allocateAndCopyMatrixDataELL(int length, const MatrixDataELL &data,
+                                    Device::MatrixELLDevice &deviceMatrix);
   virtual void doTransferTo() override;
+  void freeMatrixDataCRS(const Device::MatrixCRSDevice &device);
+  void freeMatrixDataELL(const Device::MatrixELLDevice &device);
   virtual void doTransferFrom() override;
 
   virtual void cpy(Vector _dst, Vector _src) override;
@@ -212,6 +218,40 @@ void CGMultiCUDA::synchronizeAllDevices() {
   }
 }
 
+void CGMultiCUDA::allocateAndCopyMatrixDataCRS(
+    int length, const MatrixDataCRS &data,
+    Device::MatrixCRSDevice &deviceMatrix) {
+  size_t ptrSize = sizeof(int) * (length + 1);
+  int deviceNz = data.ptr[length];
+  size_t indexSize = sizeof(int) * deviceNz;
+  size_t valueSize = sizeof(floatType) * deviceNz;
+
+  checkedMalloc(&deviceMatrix.ptr, ptrSize);
+  checkedMalloc(&deviceMatrix.index, indexSize);
+  checkedMalloc(&deviceMatrix.value, valueSize);
+
+  checkedMemcpyAsyncToDevice(deviceMatrix.ptr, data.ptr, ptrSize);
+  checkedMemcpyAsyncToDevice(deviceMatrix.index, data.index, indexSize);
+  checkedMemcpyAsyncToDevice(deviceMatrix.value, data.value, valueSize);
+}
+
+void CGMultiCUDA::allocateAndCopyMatrixDataELL(
+    int length, const MatrixDataELL &data,
+    Device::MatrixELLDevice &deviceMatrix) {
+  size_t lengthSize = sizeof(int) * length;
+  int elements = data.elements;
+  size_t indexSize = sizeof(int) * elements;
+  size_t dataSize = sizeof(floatType) * elements;
+
+  checkedMalloc(&deviceMatrix.length, lengthSize);
+  checkedMalloc(&deviceMatrix.index, indexSize);
+  checkedMalloc(&deviceMatrix.data, dataSize);
+
+  checkedMemcpyAsyncToDevice(deviceMatrix.length, data.length, lengthSize);
+  checkedMemcpyAsyncToDevice(deviceMatrix.index, data.index, indexSize);
+  checkedMemcpyAsyncToDevice(deviceMatrix.data, data.data, dataSize);
+}
+
 void CGMultiCUDA::doTransferTo() {
   size_t fullVectorSize = sizeof(floatType) * N;
 
@@ -235,39 +275,13 @@ void CGMultiCUDA::doTransferTo() {
 
     switch (matrixFormat) {
     case MatrixFormatCRS: {
-      size_t ptrSize = sizeof(int) * (length + 1);
-      int deviceNz = splitMatrixCRS->data[d].ptr[length];
-      size_t indexSize = sizeof(int) * deviceNz;
-      size_t valueSize = sizeof(floatType) * deviceNz;
-
-      checkedMalloc(&device.matrixCRS.ptr, ptrSize);
-      checkedMalloc(&device.matrixCRS.index, indexSize);
-      checkedMalloc(&device.matrixCRS.value, valueSize);
-
-      checkedMemcpyAsyncToDevice(device.matrixCRS.ptr,
-                                 splitMatrixCRS->data[d].ptr, ptrSize);
-      checkedMemcpyAsyncToDevice(device.matrixCRS.index,
-                                 splitMatrixCRS->data[d].index, indexSize);
-      checkedMemcpyAsyncToDevice(device.matrixCRS.value,
-                                 splitMatrixCRS->data[d].value, valueSize);
+      allocateAndCopyMatrixDataCRS(length, splitMatrixCRS->data[d],
+                                   device.matrixCRS);
       break;
     }
     case MatrixFormatELL: {
-      size_t lengthSize = sizeof(int) * length;
-      int elements = splitMatrixELL->data[d].elements;
-      size_t indexSize = sizeof(int) * elements;
-      size_t dataSize = sizeof(floatType) * elements;
-
-      checkedMalloc(&device.matrixELL.length, lengthSize);
-      checkedMalloc(&device.matrixELL.index, indexSize);
-      checkedMalloc(&device.matrixELL.data, dataSize);
-
-      checkedMemcpyAsyncToDevice(device.matrixELL.length,
-                                 splitMatrixELL->data[d].length, lengthSize);
-      checkedMemcpyAsyncToDevice(device.matrixELL.index,
-                                 splitMatrixELL->data[d].index, indexSize);
-      checkedMemcpyAsyncToDevice(device.matrixELL.data,
-                                 splitMatrixELL->data[d].data, dataSize);
+      allocateAndCopyMatrixDataELL(length, splitMatrixELL->data[d],
+                                   device.matrixELL);
       break;
     }
     default:
@@ -293,6 +307,18 @@ void CGMultiCUDA::doTransferTo() {
   synchronizeAllDevices();
 }
 
+void CGMultiCUDA::freeMatrixDataCRS(const Device::MatrixCRSDevice &device) {
+  checkedFree(device.ptr);
+  checkedFree(device.index);
+  checkedFree(device.value);
+}
+
+void CGMultiCUDA::freeMatrixDataELL(const Device::MatrixELLDevice &device) {
+  checkedFree(device.length);
+  checkedFree(device.index);
+  checkedFree(device.data);
+}
+
 void CGMultiCUDA::doTransferFrom() {
   // Copy back solution and free memory on the device.
   for (MultiDevice &device : devices) {
@@ -314,15 +340,11 @@ void CGMultiCUDA::doTransferFrom() {
 
     switch (matrixFormat) {
     case MatrixFormatCRS: {
-      checkedFree(device.matrixCRS.ptr);
-      checkedFree(device.matrixCRS.index);
-      checkedFree(device.matrixCRS.value);
+      freeMatrixDataCRS(device.matrixCRS);
       break;
     }
     case MatrixFormatELL: {
-      checkedFree(device.matrixELL.length);
-      checkedFree(device.matrixELL.index);
-      checkedFree(device.matrixELL.data);
+      freeMatrixDataELL(device.matrixELL);
       break;
     }
     default:

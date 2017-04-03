@@ -85,18 +85,28 @@ protected:
     /// CG#VectorZ
     floatType *z;
 
-    /// MatrixCRS or SplitMatrixCRS on the device.
-    struct {
+    /// Struct holding pointers to a MatrixDataCRS on the device.
+    struct MatrixCRSDevice {
+      /// @see MatrixDataELL#ptr
       int *ptr;
+      /// @see MatrixDataELL#index
       int *index;
+      /// @see MatrixDataELL#value
       floatType *value;
-    } matrixCRS;
-    /// MatrixELL or SplitMatrixELL on the device.
-    struct {
+    };
+    /// MatrixDataCRS on the device.
+    MatrixCRSDevice matrixCRS;
+    /// Struct holding pointers to a MatrixDataELL on the device.
+    struct MatrixELLDevice {
+      /// @see MatrixDataELL#length
       int *length;
+      /// @see MatrixDataELL#index
       int *index;
+      /// @see MatrixDataELL#data
       floatType *data;
-    } matrixELL;
+    };
+    /// MatrixDataELL on the device.
+    MatrixELLDevice matrixELL;
     /// JacobiCUDA on the device.
     struct {
       floatType *C;
