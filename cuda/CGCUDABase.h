@@ -164,7 +164,9 @@ protected:
   virtual void doTransferFrom() override = 0;
 
 public:
-  CGCUDABase() : CG(MatrixFormatELL, PreconditionerJacobi) {}
+  /// @see CG
+  CGCUDABase(bool overlappedGather = false)
+      : CG(MatrixFormatELL, PreconditionerJacobi, overlappedGather) {}
 };
 
 #endif

@@ -10,6 +10,13 @@ extern __global__ void matvecKernelCRS(int *ptr, int *index, floatType *value,
 extern __global__ void matvecKernelELL(int *length, int *index, floatType *data,
                                        floatType *x, floatType *y, int N);
 
+extern __global__ void matvecKernelCRSRoundup(int *ptr, int *index,
+                                              floatType *value, floatType *x,
+                                              floatType *y, int N);
+extern __global__ void matvecKernelELLRoundup(int *length, int *index,
+                                              floatType *data, floatType *x,
+                                              floatType *y, int N);
+
 extern __global__ void axpyKernelCUDA(floatType a, floatType *x, floatType *y,
                                       int N);
 extern __global__ void xpayKernelCUDA(floatType *x, floatType a, floatType *y,

@@ -33,14 +33,44 @@ class CGMultiCUDA : public CGCUDABase {
     }
   };
 
+  struct PartitionedMatrixCRSCUDA : PartitionedMatrixCRS {
+    PartitionedMatrixCRSCUDA(const MatrixCOO &coo, const WorkDistribution &wd)
+        : PartitionedMatrixCRS(coo, wd) {}
+
+    virtual void allocateDiagAndMinor(int numberOfChunks) override {
+      diag.reset((MatrixDataCRS *)new MatrixDataCRSCUDA[numberOfChunks]);
+      minor.reset((MatrixDataCRS *)new MatrixDataCRSCUDA[numberOfChunks]);
+    }
+  };
+  struct PartitionedMatrixELLCUDA : PartitionedMatrixELL {
+    PartitionedMatrixELLCUDA(const MatrixCOO &coo, const WorkDistribution &wd)
+        : PartitionedMatrixELL(coo, wd) {}
+
+    virtual void allocateDiagAndMinor(int numberOfChunks) override {
+      diag.reset((MatrixDataELL *)new MatrixDataELLCUDA[numberOfChunks]);
+      minor.reset((MatrixDataELL *)new MatrixDataELLCUDA[numberOfChunks]);
+    }
+  };
+
   struct MultiDevice : Device {
     int id;
     CGMultiCUDA *cg;
 
+    MatrixCRSDevice diagMatrixCRS;
+    MatrixELLDevice diagMatrixELL;
+
     floatType vectorDotResult;
     cudaStream_t gatherStream;
+    cudaEvent_t gatherFinished;
+    cudaStream_t overlappedMatvecStream;
 
-    ~MultiDevice() { checkError(cudaStreamDestroy(gatherStream)); }
+    ~MultiDevice() {
+      checkError(cudaStreamDestroy(gatherStream));
+      if (cg->overlappedGather) {
+        checkError(cudaEventDestroy(gatherFinished));
+        checkError(cudaStreamDestroy(overlappedMatvecStream));
+      }
+    }
 
     void init(int id, CGMultiCUDA *cg) {
       this->id = id;
@@ -48,6 +78,10 @@ class CGMultiCUDA : public CGCUDABase {
 
       setDevice();
       checkError(cudaStreamCreate(&gatherStream));
+      if (cg->overlappedGather) {
+        checkError(cudaEventCreate(&gatherFinished));
+        checkError(cudaStreamCreate(&overlappedMatvecStream));
+      }
     }
     void setDevice() const { checkedSetDevice(id); }
 
@@ -72,15 +106,24 @@ class CGMultiCUDA : public CGCUDABase {
   floatType *p = nullptr;
 
   virtual int getNumberOfChunks() override { return devices.size(); }
+  virtual bool supportsOverlappedGather() override { return true; }
 
   virtual void parseEnvironment() override;
   virtual void init(const char *matrixFile) override;
 
-  virtual void convertToSplitMatrixCRS() {
+  virtual void convertToSplitMatrixCRS() override {
     splitMatrixCRS.reset(new SplitMatrixCRSCUDA(*matrixCOO, *workDistribution));
   }
-  virtual void convertToSplitMatrixELL() {
+  virtual void convertToSplitMatrixELL() override {
     splitMatrixELL.reset(new SplitMatrixELLCUDA(*matrixCOO, *workDistribution));
+  }
+  virtual void convertToPartitionedMatrixCRS() override {
+    partitionedMatrixCRS.reset(
+        new PartitionedMatrixCRSCUDA(*matrixCOO, *workDistribution));
+  }
+  virtual void convertToPartitionedMatrixELL() override {
+    partitionedMatrixELL.reset(
+        new PartitionedMatrixELLCUDA(*matrixCOO, *workDistribution));
   }
 
   virtual void initJacobi() override {
@@ -97,6 +140,8 @@ class CGMultiCUDA : public CGCUDABase {
   virtual void deallocateX() override { checkedFreeHost(x); }
 
   void synchronizeAllDevices();
+  void synchronizeAllDevicesGatherStream();
+  void recordGatherFinished();
 
   void allocateAndCopyMatrixDataCRS(int length, const MatrixDataCRS &data,
                                     Device::MatrixCRSDevice &deviceMatrix);
@@ -127,6 +172,9 @@ class CGMultiCUDA : public CGCUDABase {
       checkedFreeHost(p);
     }
   }
+
+public:
+  CGMultiCUDA() : CGCUDABase(/* overlappedGather= */ true) {}
 };
 
 const char *CG_CUDA_GATHER_IMPL = "CG_CUDA_GATHER_IMPL";
@@ -218,6 +266,22 @@ void CGMultiCUDA::synchronizeAllDevices() {
   }
 }
 
+void CGMultiCUDA::synchronizeAllDevicesGatherStream() {
+  for (const MultiDevice &device : devices) {
+    device.setDevice();
+    checkError(cudaStreamSynchronize(device.gatherStream));
+  }
+}
+
+void CGMultiCUDA::recordGatherFinished() {
+  assert(overlappedGather == true);
+
+  for (const MultiDevice &device : devices) {
+    device.setDevice();
+    checkError(cudaEventRecord(device.gatherFinished, device.gatherStream));
+  }
+}
+
 void CGMultiCUDA::allocateAndCopyMatrixDataCRS(
     int length, const MatrixDataCRS &data,
     Device::MatrixCRSDevice &deviceMatrix) {
@@ -275,13 +339,27 @@ void CGMultiCUDA::doTransferTo() {
 
     switch (matrixFormat) {
     case MatrixFormatCRS: {
-      allocateAndCopyMatrixDataCRS(length, splitMatrixCRS->data[d],
-                                   device.matrixCRS);
+      if (!overlappedGather) {
+        allocateAndCopyMatrixDataCRS(length, splitMatrixCRS->data[d],
+                                     device.matrixCRS);
+      } else {
+        allocateAndCopyMatrixDataCRS(length, partitionedMatrixCRS->diag[d],
+                                     device.diagMatrixCRS);
+        allocateAndCopyMatrixDataCRS(length, partitionedMatrixCRS->minor[d],
+                                     device.matrixCRS);
+      }
       break;
     }
     case MatrixFormatELL: {
-      allocateAndCopyMatrixDataELL(length, splitMatrixELL->data[d],
-                                   device.matrixELL);
+      if (!overlappedGather) {
+        allocateAndCopyMatrixDataELL(length, splitMatrixELL->data[d],
+                                     device.matrixELL);
+      } else {
+        allocateAndCopyMatrixDataELL(length, partitionedMatrixELL->diag[d],
+                                     device.diagMatrixELL);
+        allocateAndCopyMatrixDataELL(length, partitionedMatrixELL->minor[d],
+                                     device.matrixELL);
+      }
       break;
     }
     default:
@@ -340,10 +418,16 @@ void CGMultiCUDA::doTransferFrom() {
 
     switch (matrixFormat) {
     case MatrixFormatCRS: {
+      if (overlappedGather) {
+        freeMatrixDataCRS(device.diagMatrixCRS);
+      }
       freeMatrixDataCRS(device.matrixCRS);
       break;
     }
     case MatrixFormatELL: {
+      if (overlappedGather) {
+        freeMatrixDataELL(device.diagMatrixELL);
+      }
       freeMatrixDataELL(device.matrixELL);
       break;
     }
@@ -409,7 +493,7 @@ void CGMultiCUDA::matvecGatherXViaHost(Vector _x) {
     checkedMemcpyAsync(xHost + offset, x, sizeof(floatType) * length,
                        cudaMemcpyDeviceToHost, device.gatherStream);
   }
-  synchronizeAllDevices();
+  synchronizeAllDevicesGatherStream();
 
   // Transfer x to devices.
   for (MultiDevice &device : devices) {
@@ -430,7 +514,11 @@ void CGMultiCUDA::matvecGatherXViaHost(Vector _x) {
                                  device.gatherStream);
     }
   }
-  synchronizeAllDevices();
+  if (!overlappedGather) {
+    synchronizeAllDevicesGatherStream();
+  } else {
+    recordGatherFinished();
+  }
 }
 
 void CGMultiCUDA::matvecGatherXOnDevices(Vector _x) {
@@ -453,10 +541,46 @@ void CGMultiCUDA::matvecGatherXOnDevices(Vector _x) {
     }
   }
 
-  synchronizeAllDevices();
+  if (!overlappedGather) {
+    synchronizeAllDevicesGatherStream();
+  } else {
+    recordGatherFinished();
+  }
 }
 
 void CGMultiCUDA::matvecKernel(Vector _x, Vector _y) {
+  if (overlappedGather) {
+    // Start computation on the diagonal that does not require data exchange
+    // between the devices. It is efficient to do so before the gather because
+    // the computation is expected to take longer. This effectively even hides
+    // the overhead of starting the gather.
+    for (MultiDevice &device : devices) {
+      device.setDevice();
+
+      int length = workDistribution->lengths[device.id];
+      floatType *x = device.getVector(_x, /* forMatvec= */ true);
+      floatType *y = device.getVector(_y);
+
+      switch (matrixFormat) {
+      case MatrixFormatCRS:
+        matvecKernelCRS<<<device.blocksMatvec, Device::Threads, 0,
+                          device.overlappedMatvecStream>>>(
+            device.diagMatrixCRS.ptr, device.diagMatrixCRS.index,
+            device.diagMatrixCRS.value, x, y, length);
+        break;
+      case MatrixFormatELL:
+        matvecKernelELL<<<device.blocksMatvec, Device::Threads, 0,
+                          device.overlappedMatvecStream>>>(
+            device.diagMatrixELL.length, device.diagMatrixELL.index,
+            device.diagMatrixELL.data, x, y, length);
+        break;
+      default:
+        assert(0 && "Invalid matrix format!");
+      }
+      checkLastError();
+    }
+  }
+
   switch (gatherImpl) {
   case GatherImplHost:
     matvecGatherXViaHost(_x);
@@ -478,14 +602,36 @@ void CGMultiCUDA::matvecKernel(Vector _x, Vector _y) {
 
     switch (matrixFormat) {
     case MatrixFormatCRS:
-      matvecKernelCRS<<<device.blocksMatvec, Device::Threads>>>(
-          device.matrixCRS.ptr, device.matrixCRS.index, device.matrixCRS.value,
-          x, y, length);
+      if (!overlappedGather) {
+        matvecKernelCRS<<<device.blocksMatvec, Device::Threads>>>(
+            device.matrixCRS.ptr, device.matrixCRS.index,
+            device.matrixCRS.value, x, y, length);
+      } else {
+        // Wait for gather to finish...
+        cudaStreamWaitEvent(device.overlappedMatvecStream,
+                            device.gatherFinished, 0);
+
+        matvecKernelCRSRoundup<<<device.blocksMatvec, Device::Threads, 0,
+                                 device.overlappedMatvecStream>>>(
+            device.matrixCRS.ptr, device.matrixCRS.index,
+            device.matrixCRS.value, x, y, length);
+      }
       break;
     case MatrixFormatELL:
-      matvecKernelELL<<<device.blocksMatvec, Device::Threads>>>(
-          device.matrixELL.length, device.matrixELL.index,
-          device.matrixELL.data, x, y, length);
+      if (!overlappedGather) {
+        matvecKernelELL<<<device.blocksMatvec, Device::Threads>>>(
+            device.matrixELL.length, device.matrixELL.index,
+            device.matrixELL.data, x, y, length);
+      } else {
+        // Wait for gather to finish...
+        cudaStreamWaitEvent(device.overlappedMatvecStream,
+                            device.gatherFinished, 0);
+
+        matvecKernelELLRoundup<<<device.blocksMatvec, Device::Threads, 0,
+                                 device.overlappedMatvecStream>>>(
+            device.matrixELL.length, device.matrixELL.index,
+            device.matrixELL.data, x, y, length);
+      }
       break;
     default:
       assert(0 && "Invalid matrix format!");

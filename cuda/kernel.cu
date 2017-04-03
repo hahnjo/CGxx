@@ -2,30 +2,60 @@
 
 // https://devblogs.nvidia.com/parallelforall/cuda-pro-tip-write-flexible-kernels-grid-stride-loops/
 
-__global__ void matvecKernelCRS(int *ptr, int *index, floatType *value,
-                                floatType *x, floatType *y, int N) {
+template <bool roundup>
+__inline__ __device__ void _matvecKernelCRS(int *ptr, int *index,
+                                            floatType *value, floatType *x,
+                                            floatType *y, int N) {
   for (int i = blockIdx.x * blockDim.x + threadIdx.x; i < N;
        i += blockDim.x * gridDim.x) {
-    floatType tmp = 0;
-    for (int j = ptr[i]; j < ptr[i + 1]; j++) {
-      tmp += value[j] * x[index[j]];
+    // Skip load and store if nothing to be done...
+    if (!roundup || ptr[i] == ptr[i + 1]) {
+      floatType tmp = (roundup ? y[i] : 0);
+      for (int j = ptr[i]; j < ptr[i + 1]; j++) {
+        tmp += value[j] * x[index[j]];
+      }
+      y[i] = tmp;
     }
-    y[i] = tmp;
   }
 }
 
-__global__ void matvecKernelELL(int *length, int *index, floatType *data,
-                                floatType *x, floatType *y, int N) {
+template <bool roundup>
+__inline__ __device__ void _matvecKernelELL(int *length, int *index,
+                                            floatType *data, floatType *x,
+                                            floatType *y, int N) {
   for (int i = blockIdx.x * blockDim.x + threadIdx.x; i < N;
        i += blockDim.x * gridDim.x) {
-    floatType tmp = 0;
-    for (int j = 0; j < length[i]; j++) {
-      int k = j * N + i;
-      tmp += data[k] * x[index[k]];
+    // Skip load and store if nothing to be done...
+    if (!roundup || length[i] > 0) {
+      floatType tmp = (roundup ? y[i] : 0);
+      for (int j = 0; j < length[i]; j++) {
+        int k = j * N + i;
+        tmp += data[k] * x[index[k]];
+      }
+      y[i] = tmp;
     }
-    y[i] = tmp;
   }
 }
+
+__global__ void matvecKernelCRS(int *ptr, int *index, floatType *value,
+                                floatType *x, floatType *y, int N) {
+  _matvecKernelCRS<false>(ptr, index, value, x, y, N);
+}
+__global__ void matvecKernelELL(int *length, int *index, floatType *data,
+                                floatType *x, floatType *y, int N) {
+  _matvecKernelELL<false>(length, index, data, x, y, N);
+}
+
+__global__ void matvecKernelCRSRoundup(int *ptr, int *index, floatType *value,
+                                       floatType *x, floatType *y, int N) {
+  _matvecKernelCRS<true>(ptr, index, value, x, y, N);
+}
+__global__ void matvecKernelELLRoundup(int *length, int *index, floatType *data,
+                                       floatType *x, floatType *y, int N) {
+  _matvecKernelELL<true>(length, index, data, x, y, N);
+}
+
+// -----------------------------------------------------------------------------
 
 __global__ void axpyKernelCUDA(floatType a, floatType *x, floatType *y, int N) {
   for (int i = blockIdx.x * blockDim.x + threadIdx.x; i < N;
