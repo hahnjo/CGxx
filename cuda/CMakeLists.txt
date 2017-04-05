@@ -1,4 +1,4 @@
-if ("${CMAKE_C_COMPILER_ID}" STREQUAL "Clang")
+if ("${CMAKE_C_COMPILER_ID}" MATCHES "Clang|XL")
   return()
 endif()
 

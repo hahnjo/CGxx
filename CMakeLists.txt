@@ -1,6 +1,9 @@
 cmake_minimum_required(VERSION 2.8)
 
 project(CGxx C CXX)
+if (${CMAKE_CXX_FLAGS} MATCHES "-qhalt=e")
+  string(REPLACE "-qhalt=e" "" CMAKE_CXX_FLAGS ${CMAKE_CXX_FLAGS})
+endif()
 
 # Get compiler features.
 set(CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/cmake ${CMAKE_MODULE_PATH})
