@@ -57,7 +57,10 @@ MatrixCOO::MatrixCOO(const char *file) {
 
   // Read matrix.
   for (int i = 0; i < nz; i++) {
-    fscanf(fp, "%d %d %lg\n", &I[i], &J[i], &V[i]);
+    if (fscanf(fp, "%d %d %lg\n", &I[i], &J[i], &V[i]) != 3) {
+      std::cerr << "ERROR: Could not read line!" << std::endl;
+      std::exit(1);
+    }
 
     // Adjust from 1-based to 0-based.
     I[i]--;
