@@ -2,6 +2,8 @@
 #define UTILS_H
 
 #include <cmath>
+#include <cstdlib>
+#include <iostream>
 
 static inline void checkError(cudaError_t error) {
   if (error != cudaSuccess) {
