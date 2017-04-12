@@ -13,6 +13,8 @@
 
 /// Class implementing parallel kernels with OpenCL.
 class CGOpenCL : public CGOpenCLBase {
+  static const int ZERO;
+
   Device device;
 
   virtual void init(const char *matrixFile) override;
@@ -28,6 +30,7 @@ class CGOpenCL : public CGOpenCLBase {
 
   virtual void applyPreconditionerKernel(Vector _x, Vector _y) override;
 };
+const int CGOpenCL::ZERO = 0;
 
 void CGOpenCL::init(const char *matrixFile) {
   // First init the device and don't read matrix when there is none available.
@@ -146,7 +149,8 @@ void CGOpenCL::matvecKernel(Vector _x, Vector _y) {
                         &device.matrixCRS.value);
     checkedSetKernelArg(matvecKernelCRS, 3, sizeof(cl_mem), &x);
     checkedSetKernelArg(matvecKernelCRS, 4, sizeof(cl_mem), &y);
-    checkedSetKernelArg(matvecKernelCRS, 5, sizeof(int), &N);
+    checkedSetKernelArg(matvecKernelCRS, 5, sizeof(int), &ZERO);
+    checkedSetKernelArg(matvecKernelCRS, 6, sizeof(int), &N);
     device.checkedEnqueueNDRangeKernel(matvecKernelCRS, device.globalMatvec);
     break;
   case MatrixFormatELL:
@@ -158,7 +162,8 @@ void CGOpenCL::matvecKernel(Vector _x, Vector _y) {
                         &device.matrixELL.data);
     checkedSetKernelArg(matvecKernelELL, 3, sizeof(cl_mem), &x);
     checkedSetKernelArg(matvecKernelELL, 4, sizeof(cl_mem), &y);
-    checkedSetKernelArg(matvecKernelELL, 5, sizeof(int), &N);
+    checkedSetKernelArg(matvecKernelELL, 5, sizeof(int), &ZERO);
+    checkedSetKernelArg(matvecKernelELL, 6, sizeof(int), &N);
     device.checkedEnqueueNDRangeKernel(matvecKernelELL, device.globalMatvec);
     break;
   default:
@@ -173,8 +178,10 @@ void CGOpenCL::axpyKernel(floatType a, Vector _x, Vector _y) {
 
   checkedSetKernelArg(axpyKernelCL, 0, sizeof(floatType), &a);
   checkedSetKernelArg(axpyKernelCL, 1, sizeof(cl_mem), &x);
-  checkedSetKernelArg(axpyKernelCL, 2, sizeof(cl_mem), &y);
-  checkedSetKernelArg(axpyKernelCL, 3, sizeof(int), &N);
+  checkedSetKernelArg(axpyKernelCL, 2, sizeof(int), &ZERO);
+  checkedSetKernelArg(axpyKernelCL, 3, sizeof(cl_mem), &y);
+  checkedSetKernelArg(axpyKernelCL, 4, sizeof(int), &ZERO);
+  checkedSetKernelArg(axpyKernelCL, 5, sizeof(int), &N);
   device.checkedEnqueueNDRangeKernel(axpyKernelCL);
   device.checkedFinish();
 }
@@ -184,9 +191,11 @@ void CGOpenCL::xpayKernel(Vector _x, floatType a, Vector _y) {
   cl_mem y = device.getVector(_y);
 
   checkedSetKernelArg(xpayKernelCL, 0, sizeof(cl_mem), &x);
-  checkedSetKernelArg(xpayKernelCL, 1, sizeof(floatType), &a);
-  checkedSetKernelArg(xpayKernelCL, 2, sizeof(cl_mem), &y);
-  checkedSetKernelArg(xpayKernelCL, 3, sizeof(int), &N);
+  checkedSetKernelArg(xpayKernelCL, 1, sizeof(int), &ZERO);
+  checkedSetKernelArg(xpayKernelCL, 2, sizeof(floatType), &a);
+  checkedSetKernelArg(xpayKernelCL, 3, sizeof(cl_mem), &y);
+  checkedSetKernelArg(xpayKernelCL, 4, sizeof(int), &ZERO);
+  checkedSetKernelArg(xpayKernelCL, 5, sizeof(int), &N);
   device.checkedEnqueueNDRangeKernel(xpayKernelCL);
   device.checkedFinish();
 }
@@ -202,10 +211,12 @@ floatType CGOpenCL::vectorDotKernel(Vector _a, Vector _b) {
   size_t localForReduce = Device::MaxGroups * sizeof(floatType);
 
   checkedSetKernelArg(vectorDotKernelCL, 0, sizeof(cl_mem), &a);
-  checkedSetKernelArg(vectorDotKernelCL, 1, sizeof(cl_mem), &b);
-  checkedSetKernelArg(vectorDotKernelCL, 2, sizeof(cl_mem), &device.tmp);
-  checkedSetKernelArg(vectorDotKernelCL, 3, localForVectorDot, NULL);
-  checkedSetKernelArg(vectorDotKernelCL, 4, sizeof(int), &N);
+  checkedSetKernelArg(vectorDotKernelCL, 1, sizeof(int), &ZERO);
+  checkedSetKernelArg(vectorDotKernelCL, 2, sizeof(cl_mem), &b);
+  checkedSetKernelArg(vectorDotKernelCL, 3, sizeof(int), &ZERO);
+  checkedSetKernelArg(vectorDotKernelCL, 4, sizeof(cl_mem), &device.tmp);
+  checkedSetKernelArg(vectorDotKernelCL, 5, localForVectorDot, NULL);
+  checkedSetKernelArg(vectorDotKernelCL, 6, sizeof(int), &N);
   device.checkedEnqueueNDRangeKernel(vectorDotKernelCL);
 
   checkedSetKernelArg(deviceReduceKernel, 0, sizeof(cl_mem), &device.tmp);
@@ -230,8 +241,10 @@ void CGOpenCL::applyPreconditionerKernel(Vector _x, Vector _y) {
     checkedSetKernelArg(applyPreconditionerKernelJacobi, 0, sizeof(cl_mem),
                         &device.jacobi.C);
     checkedSetKernelArg(applyPreconditionerKernelJacobi, 1, sizeof(cl_mem), &x);
-    checkedSetKernelArg(applyPreconditionerKernelJacobi, 2, sizeof(cl_mem), &y);
-    checkedSetKernelArg(applyPreconditionerKernelJacobi, 3, sizeof(int), &N);
+    checkedSetKernelArg(applyPreconditionerKernelJacobi, 2, sizeof(int), &ZERO);
+    checkedSetKernelArg(applyPreconditionerKernelJacobi, 3, sizeof(cl_mem), &y);
+    checkedSetKernelArg(applyPreconditionerKernelJacobi, 4, sizeof(int), &ZERO);
+    checkedSetKernelArg(applyPreconditionerKernelJacobi, 5, sizeof(int), &N);
     device.checkedEnqueueNDRangeKernel(applyPreconditionerKernelJacobi);
     break;
   default:

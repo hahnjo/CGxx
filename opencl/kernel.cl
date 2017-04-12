@@ -8,40 +8,40 @@ typedef double floatType;
 
 __kernel void matvecKernelCRS(__global int *ptr, __global int *index,
                               __global floatType *value, __global floatType *x,
-                              __global floatType *y, int N) {
+                              __global floatType *y, int yOffset, int N) {
   for (int i = get_global_id(0); i < N; i += get_global_size(0)) {
     floatType tmp = 0;
     for (int j = ptr[i]; j < ptr[i + 1]; j++) {
       tmp += value[j] * x[index[j]];
     }
-    y[i] = tmp;
+    y[yOffset + i] = tmp;
   }
 }
 
 __kernel void matvecKernelELL(__global int *length, __global int *index,
                               __global floatType *data, __global floatType *x,
-                              __global floatType *y, int N) {
+                              __global floatType *y, int yOffset, int N) {
   for (int i = get_global_id(0); i < N; i += get_global_size(0)) {
     floatType tmp = 0;
     for (int j = 0; j < length[i]; j++) {
       int k = j * N + i;
       tmp += data[k] * x[index[k]];
     }
-    y[i] = tmp;
+    y[yOffset + i] = tmp;
   }
 }
 
-__kernel void axpyKernel(floatType a, __global floatType *x,
-                         __global floatType *y, int N) {
+__kernel void axpyKernel(floatType a, __global floatType *x, int xOffset,
+                         __global floatType *y, int yOffset, int N) {
   for (int i = get_global_id(0); i < N; i += get_global_size(0)) {
-    y[i] = a * x[i] + y[i];
+    y[yOffset + i] = a * x[xOffset + i] + y[yOffset + i];
   }
 }
 
-__kernel void xpayKernel(__global floatType *x, floatType a,
-                         __global floatType *y, int N) {
+__kernel void xpayKernel(__global floatType *x, int xOffset, floatType a,
+                         __global floatType *y, int yOffset, int N) {
   for (int i = get_global_id(0); i < N; i += get_global_size(0)) {
-    y[i] = x[i] + a * y[i];
+    y[yOffset + i] = x[xOffset + i] + a * y[yOffset + i];
   }
 }
 
@@ -83,12 +83,13 @@ __kernel void deviceReduceKernel(__global floatType *in,
 }
 // -----------------------------------------------------------------------------
 
-__kernel void vectorDotKernel(__global floatType *a, __global floatType *b,
+__kernel void vectorDotKernel(__global floatType *a, int aOffset,
+                              __global floatType *b, int bOffset,
                               __global floatType *tmp,
                               __local floatType *scratch, int N) {
   floatType sum = 0;
   for (int i = get_global_id(0); i < N; i += get_global_size(0)) {
-    sum += a[i] * b[i];
+    sum += a[aOffset + i] * b[bOffset + i];
   }
 
   sum = localReduceSum(sum, scratch);
@@ -100,9 +101,11 @@ __kernel void vectorDotKernel(__global floatType *a, __global floatType *b,
 
 __kernel void applyPreconditionerKernelJacobi(__global floatType *C,
                                               __global floatType *x,
-                                              __global floatType *y, int N) {
+                                              int xOffset,
+                                              __global floatType *y,
+                                              int yOffset, int N) {
   for (int i = get_global_id(0); i < N; i += get_global_size(0)) {
-    y[i] = C[i] * x[i];
+    y[yOffset + i] = C[i] * x[xOffset + i];
   }
 }
 
