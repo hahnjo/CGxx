@@ -69,47 +69,47 @@ protected:
     int blocksMatvec;
 
     /// Temporary memory for use in reduction of CG#vectorDot.
-    floatType *tmp;
+    floatType *tmp = nullptr;
 
     /// CG#VectorK
-    floatType *k;
+    floatType *k = nullptr;
     /// CG#VectorX
-    floatType *x;
+    floatType *x = nullptr;
 
     /// CG#VectorP
-    floatType *p;
+    floatType *p = nullptr;
     /// CG#VectorQ
-    floatType *q;
+    floatType *q = nullptr;
     /// CG#VectorR
-    floatType *r;
+    floatType *r = nullptr;
     /// CG#VectorZ
-    floatType *z;
+    floatType *z = nullptr;
 
     /// Struct holding pointers to a MatrixDataCRS on the device.
     struct MatrixCRSDevice {
       /// @see MatrixDataELL#ptr
-      int *ptr;
+      int *ptr = nullptr;
       /// @see MatrixDataELL#index
-      int *index;
+      int *index = nullptr;
       /// @see MatrixDataELL#value
-      floatType *value;
+      floatType *value = nullptr;
     };
     /// MatrixDataCRS on the device.
     MatrixCRSDevice matrixCRS;
     /// Struct holding pointers to a MatrixDataELL on the device.
     struct MatrixELLDevice {
       /// @see MatrixDataELL#length
-      int *length;
+      int *length = nullptr;
       /// @see MatrixDataELL#index
-      int *index;
+      int *index = nullptr;
       /// @see MatrixDataELL#data
-      floatType *data;
+      floatType *data = nullptr;
     };
     /// MatrixDataELL on the device.
     MatrixELLDevice matrixELL;
     /// JacobiCUDA on the device.
     struct {
-      floatType *C;
+      floatType *C = nullptr;
     } jacobi;
 
     /// Calculate the launch configuration for vectors of length \a N.
