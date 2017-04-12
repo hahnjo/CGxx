@@ -6,6 +6,7 @@ find_package(OpenCL)
 
 if (OpenCL_FOUND)
   add_executable(cg_ocl $<TARGET_OBJECTS:common>
+    CGOpenCLBase.cpp
     CGOpenCL.cpp
   )
   target_link_libraries(cg_ocl ${OpenCL_LIBRARIES})
