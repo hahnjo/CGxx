@@ -143,13 +143,7 @@ class CGMultiCUDA : public CGCUDABase {
   void synchronizeAllDevicesGatherStream();
   void recordGatherFinished();
 
-  void allocateAndCopyMatrixDataCRS(int length, const MatrixDataCRS &data,
-                                    Device::MatrixCRSDevice &deviceMatrix);
-  void allocateAndCopyMatrixDataELL(int length, const MatrixDataELL &data,
-                                    Device::MatrixELLDevice &deviceMatrix);
   virtual void doTransferTo() override;
-  void freeMatrixDataCRS(const Device::MatrixCRSDevice &device);
-  void freeMatrixDataELL(const Device::MatrixELLDevice &device);
   virtual void doTransferFrom() override;
 
   virtual void cpy(Vector _dst, Vector _src) override;
@@ -282,40 +276,6 @@ void CGMultiCUDA::recordGatherFinished() {
   }
 }
 
-void CGMultiCUDA::allocateAndCopyMatrixDataCRS(
-    int length, const MatrixDataCRS &data,
-    Device::MatrixCRSDevice &deviceMatrix) {
-  size_t ptrSize = sizeof(int) * (length + 1);
-  int deviceNz = data.ptr[length];
-  size_t indexSize = sizeof(int) * deviceNz;
-  size_t valueSize = sizeof(floatType) * deviceNz;
-
-  checkedMalloc(&deviceMatrix.ptr, ptrSize);
-  checkedMalloc(&deviceMatrix.index, indexSize);
-  checkedMalloc(&deviceMatrix.value, valueSize);
-
-  checkedMemcpyAsyncToDevice(deviceMatrix.ptr, data.ptr, ptrSize);
-  checkedMemcpyAsyncToDevice(deviceMatrix.index, data.index, indexSize);
-  checkedMemcpyAsyncToDevice(deviceMatrix.value, data.value, valueSize);
-}
-
-void CGMultiCUDA::allocateAndCopyMatrixDataELL(
-    int length, const MatrixDataELL &data,
-    Device::MatrixELLDevice &deviceMatrix) {
-  size_t lengthSize = sizeof(int) * length;
-  int elements = data.elements;
-  size_t indexSize = sizeof(int) * elements;
-  size_t dataSize = sizeof(floatType) * elements;
-
-  checkedMalloc(&deviceMatrix.length, lengthSize);
-  checkedMalloc(&deviceMatrix.index, indexSize);
-  checkedMalloc(&deviceMatrix.data, dataSize);
-
-  checkedMemcpyAsyncToDevice(deviceMatrix.length, data.length, lengthSize);
-  checkedMemcpyAsyncToDevice(deviceMatrix.index, data.index, indexSize);
-  checkedMemcpyAsyncToDevice(deviceMatrix.data, data.data, dataSize);
-}
-
 void CGMultiCUDA::doTransferTo() {
   size_t fullVectorSize = sizeof(floatType) * N;
 
@@ -338,7 +298,7 @@ void CGMultiCUDA::doTransferTo() {
     checkedMalloc(&device.r, vectorSize);
 
     switch (matrixFormat) {
-    case MatrixFormatCRS: {
+    case MatrixFormatCRS:
       if (!overlappedGather) {
         allocateAndCopyMatrixDataCRS(length, splitMatrixCRS->data[d],
                                      device.matrixCRS);
@@ -349,8 +309,7 @@ void CGMultiCUDA::doTransferTo() {
                                      device.matrixCRS);
       }
       break;
-    }
-    case MatrixFormatELL: {
+    case MatrixFormatELL:
       if (!overlappedGather) {
         allocateAndCopyMatrixDataELL(length, splitMatrixELL->data[d],
                                      device.matrixELL);
@@ -361,7 +320,6 @@ void CGMultiCUDA::doTransferTo() {
                                      device.matrixELL);
       }
       break;
-    }
     default:
       assert(0 && "Invalid matrix format!");
     }
@@ -385,18 +343,6 @@ void CGMultiCUDA::doTransferTo() {
   synchronizeAllDevices();
 }
 
-void CGMultiCUDA::freeMatrixDataCRS(const Device::MatrixCRSDevice &device) {
-  checkedFree(device.ptr);
-  checkedFree(device.index);
-  checkedFree(device.value);
-}
-
-void CGMultiCUDA::freeMatrixDataELL(const Device::MatrixELLDevice &device) {
-  checkedFree(device.length);
-  checkedFree(device.index);
-  checkedFree(device.data);
-}
-
 void CGMultiCUDA::doTransferFrom() {
   // Copy back solution and free memory on the device.
   for (MultiDevice &device : devices) {
@@ -417,20 +363,18 @@ void CGMultiCUDA::doTransferFrom() {
     checkedFree(device.r);
 
     switch (matrixFormat) {
-    case MatrixFormatCRS: {
+    case MatrixFormatCRS:
       if (overlappedGather) {
-        freeMatrixDataCRS(device.diagMatrixCRS);
+        freeMatrixCRSDevice(device.diagMatrixCRS);
       }
-      freeMatrixDataCRS(device.matrixCRS);
+      freeMatrixCRSDevice(device.matrixCRS);
       break;
-    }
-    case MatrixFormatELL: {
+    case MatrixFormatELL:
       if (overlappedGather) {
-        freeMatrixDataELL(device.diagMatrixELL);
+        freeMatrixELLDevice(device.diagMatrixELL);
       }
-      freeMatrixDataELL(device.matrixELL);
+      freeMatrixELLDevice(device.matrixELL);
       break;
-    }
     default:
       assert(0 && "Invalid matrix format!");
     }

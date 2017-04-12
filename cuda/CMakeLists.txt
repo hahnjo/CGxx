@@ -11,11 +11,13 @@ if (CUDA_FOUND)
   endif()
 
   cuda_add_executable(cg_cuda $<TARGET_OBJECTS:common>
+    CGCUDABase.cu
     CGCUDA.cu
     kernel.cu
   )
 
   cuda_add_executable(cg_multi_cuda $<TARGET_OBJECTS:common>
+    CGCUDABase.cu
     CGMultiCUDA.cu
     kernel.cu
   )

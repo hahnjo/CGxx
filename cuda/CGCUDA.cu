@@ -60,36 +60,12 @@ void CGCUDA::doTransferTo() {
   checkedMalloc(&device.r, vectorSize);
 
   switch (matrixFormat) {
-  case MatrixFormatCRS: {
-    size_t ptrSize = sizeof(int) * (N + 1);
-    size_t indexSize = sizeof(int) * nz;
-    size_t valueSize = sizeof(floatType) * nz;
-
-    checkedMalloc(&device.matrixCRS.ptr, ptrSize);
-    checkedMalloc(&device.matrixCRS.index, indexSize);
-    checkedMalloc(&device.matrixCRS.value, valueSize);
-
-    checkedMemcpyToDevice(device.matrixCRS.ptr, matrixCRS->ptr, ptrSize);
-    checkedMemcpyToDevice(device.matrixCRS.index, matrixCRS->index, indexSize);
-    checkedMemcpyToDevice(device.matrixCRS.value, matrixCRS->value, valueSize);
+  case MatrixFormatCRS:
+    allocateAndCopyMatrixDataCRS(N, *matrixCRS, device.matrixCRS);
     break;
-  }
-  case MatrixFormatELL: {
-    int elements = matrixELL->elements;
-    size_t lengthSize = sizeof(int) * N;
-    size_t indexSize = sizeof(int) * elements;
-    size_t dataSize = sizeof(floatType) * elements;
-
-    checkedMalloc(&device.matrixELL.length, lengthSize);
-    checkedMalloc(&device.matrixELL.index, indexSize);
-    checkedMalloc(&device.matrixELL.data, dataSize);
-
-    checkedMemcpyToDevice(device.matrixELL.length, matrixELL->length,
-                          lengthSize);
-    checkedMemcpyToDevice(device.matrixELL.index, matrixELL->index, indexSize);
-    checkedMemcpyToDevice(device.matrixELL.data, matrixELL->data, dataSize);
+  case MatrixFormatELL:
+    allocateAndCopyMatrixDataELL(N, *matrixELL, device.matrixELL);
     break;
-  }
   default:
     assert(0 && "Invalid matrix format!");
   }
@@ -107,6 +83,7 @@ void CGCUDA::doTransferTo() {
   }
 
   checkedMalloc(&device.tmp, sizeof(floatType) * Device::MaxBlocks);
+  checkedSynchronize();
 }
 
 void CGCUDA::doTransferFrom() {
@@ -121,18 +98,12 @@ void CGCUDA::doTransferFrom() {
   checkedFree(device.r);
 
   switch (matrixFormat) {
-  case MatrixFormatCRS: {
-    checkedFree(device.matrixCRS.ptr);
-    checkedFree(device.matrixCRS.index);
-    checkedFree(device.matrixCRS.value);
+  case MatrixFormatCRS:
+    freeMatrixCRSDevice(device.matrixCRS);
     break;
-  }
-  case MatrixFormatELL: {
-    checkedFree(device.matrixELL.length);
-    checkedFree(device.matrixELL.index);
-    checkedFree(device.matrixELL.data);
+  case MatrixFormatELL:
+    freeMatrixELLDevice(device.matrixELL);
     break;
-  }
   default:
     assert(0 && "Invalid matrix format!");
   }

@@ -159,6 +159,18 @@ protected:
   }
   virtual void deallocateX() override { checkedFreeHost(x); }
 
+  /// Allocate and copy \a data on the device.
+  void allocateAndCopyMatrixDataCRS(int length, const MatrixDataCRS &data,
+                                    Device::MatrixCRSDevice &deviceMatrix);
+  /// Allocate and copy \a data on the device.
+  void allocateAndCopyMatrixDataELL(int length, const MatrixDataELL &data,
+                                    Device::MatrixELLDevice &deviceMatrix);
+
+  /// Free \a deviceMatrix.
+  void freeMatrixCRSDevice(const Device::MatrixCRSDevice &deviceMatrix);
+  /// Free \a deviceMatrix.
+  void freeMatrixELLDevice(const Device::MatrixELLDevice &deviceMatrix);
+
   virtual bool needsTransfer() override { return true; }
   virtual void doTransferTo() override = 0;
   virtual void doTransferFrom() override = 0;
