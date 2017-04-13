@@ -9,7 +9,7 @@ __inline__ __device__ void _matvecKernelCRS(int *ptr, int *index,
   for (int i = blockIdx.x * blockDim.x + threadIdx.x; i < N;
        i += blockDim.x * gridDim.x) {
     // Skip load and store if nothing to be done...
-    if (!roundup || ptr[i] == ptr[i + 1]) {
+    if (!roundup || ptr[i] != ptr[i + 1]) {
       floatType tmp = (roundup ? y[i] : 0);
       for (int j = ptr[i]; j < ptr[i + 1]; j++) {
         tmp += value[j] * x[index[j]];
