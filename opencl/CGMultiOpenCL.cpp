@@ -19,7 +19,21 @@ class CGMultiOpenCL : public CGOpenCLBase {
     int id;
     WorkDistribution *workDistribution;
 
+    MatrixCRSDevice diagMatrixCRS;
+    MatrixELLDevice diagMatrixELL;
+    cl_command_queue gatherQueue;
+
     floatType vectorDotResult;
+
+    ~MultiDevice() { clReleaseCommandQueue(gatherQueue); }
+
+    virtual void init(cl_device_id device_id, CGOpenCLBase *cg) override {
+      Device::init(device_id, cg);
+
+      cl_int err;
+      gatherQueue = clCreateCommandQueue(ctx, device_id, 0, &err);
+      checkError(err);
+    }
 
     int getOffset(Vector v) const {
       if (v == VectorX || v == VectorP) {
@@ -35,11 +49,16 @@ class CGMultiOpenCL : public CGOpenCLBase {
 
   std::unique_ptr<floatType[]> p;
 
+  cl_kernel matvecKernelCRSRoundup = NULL;
+  cl_kernel matvecKernelELLRoundup = NULL;
+
   virtual int getNumberOfChunks() override { return devices.size(); }
+  virtual bool supportsOverlappedGather() override { return true; }
 
   virtual void init(const char *matrixFile) override;
 
   void finishAllDevices();
+  void finishAllDevicesGatherQueue();
 
   virtual void doTransferTo() override;
   virtual void doTransferFrom() override;
@@ -55,6 +74,18 @@ class CGMultiOpenCL : public CGOpenCLBase {
   virtual floatType vectorDotKernel(Vector _a, Vector _b) override;
 
   virtual void applyPreconditionerKernel(Vector _x, Vector _y) override;
+
+  virtual void cleanup() override {
+    CGOpenCLBase::cleanup();
+
+    if (overlappedGather) {
+      clReleaseKernel(matvecKernelCRSRoundup);
+      clReleaseKernel(matvecKernelELLRoundup);
+    }
+  }
+
+public:
+  CGMultiOpenCL() : CGOpenCLBase(/* overlappedGather= */ true) {}
 };
 
 void CGMultiOpenCL::init(const char *matrixFile) {
@@ -77,6 +108,11 @@ void CGMultiOpenCL::init(const char *matrixFile) {
   CGOpenCLBase::init(matrixFile);
   assert(workDistribution->numberOfChunks == numberOfDevices);
 
+  if (overlappedGather) {
+    matvecKernelCRSRoundup = checkedCreateKernel("matvecKernelCRSRoundup");
+    matvecKernelELLRoundup = checkedCreateKernel("matvecKernelELLRoundup");
+  }
+
   for (MultiDevice &device : devices) {
     device.workDistribution = workDistribution.get();
     int length = workDistribution->lengths[device.id];
@@ -89,6 +125,12 @@ void CGMultiOpenCL::init(const char *matrixFile) {
 void CGMultiOpenCL::finishAllDevices() {
   for (MultiDevice &device : devices) {
     device.checkedFinish();
+  }
+}
+
+void CGMultiOpenCL::finishAllDevicesGatherQueue() {
+  for (MultiDevice &device : devices) {
+    checkError(clFinish(device.gatherQueue));
   }
 }
 
@@ -113,12 +155,26 @@ void CGMultiOpenCL::doTransferTo() {
 
     switch (matrixFormat) {
     case MatrixFormatCRS:
-      allocateAndCopyMatrixDataCRS(length, splitMatrixCRS->data[d], device,
-                                   device.matrixCRS);
+      if (!overlappedGather) {
+        allocateAndCopyMatrixDataCRS(length, splitMatrixCRS->data[d], device,
+                                     device.matrixCRS);
+      } else {
+        allocateAndCopyMatrixDataCRS(length, partitionedMatrixCRS->diag[d],
+                                     device, device.diagMatrixCRS);
+        allocateAndCopyMatrixDataCRS(length, partitionedMatrixCRS->minor[d],
+                                     device, device.matrixCRS);
+      }
       break;
     case MatrixFormatELL:
-      allocateAndCopyMatrixDataELL(length, splitMatrixELL->data[d], device,
-                                   device.matrixELL);
+      if (!overlappedGather) {
+        allocateAndCopyMatrixDataELL(length, splitMatrixELL->data[d], device,
+                                     device.matrixELL);
+      } else {
+        allocateAndCopyMatrixDataELL(length, partitionedMatrixELL->diag[d],
+                                     device, device.diagMatrixELL);
+        allocateAndCopyMatrixDataELL(length, partitionedMatrixELL->minor[d],
+                                     device, device.matrixELL);
+      }
       break;
     default:
       assert(0 && "Invalid matrix format!");
@@ -162,9 +218,15 @@ void CGMultiOpenCL::doTransferFrom() {
 
     switch (matrixFormat) {
     case MatrixFormatCRS:
+      if (overlappedGather) {
+        freeMatrixCRSDevice(device.diagMatrixCRS);
+      }
       freeMatrixCRSDevice(device.matrixCRS);
       break;
     case MatrixFormatELL:
+      if (overlappedGather) {
+        freeMatrixELLDevice(device.diagMatrixELL);
+      }
       freeMatrixELLDevice(device.matrixELL);
       break;
     default:
@@ -227,10 +289,11 @@ void CGMultiOpenCL::matvecGatherXViaHost(Vector _x) {
     cl_mem x = device.getVector(_x);
     assert(offset == device.getOffset(_x));
 
-    device.checkedEnqueueReadBuffer(x, sizeof(floatType) * offset,
+    device.checkedEnqueueReadBuffer(device.gatherQueue, x,
+                                    sizeof(floatType) * offset,
                                     sizeof(floatType) * length, xHost + offset);
   }
-  finishAllDevices();
+  finishAllDevicesGatherQueue();
 
   // Transfer x to devices.
   for (MultiDevice &device : devices) {
@@ -244,15 +307,41 @@ void CGMultiOpenCL::matvecGatherXViaHost(Vector _x) {
       int offset = workDistribution->offsets[src.id];
       int length = workDistribution->lengths[src.id];
 
-      device.checkedEnqueueWriteBuffer(x, sizeof(floatType) * offset,
-                                       sizeof(floatType) * length,
-                                       xHost + offset);
+      device.checkedEnqueueWriteBuffer(
+          device.gatherQueue, x, sizeof(floatType) * offset,
+          sizeof(floatType) * length, xHost + offset);
     }
   }
-  finishAllDevices();
+  finishAllDevicesGatherQueue();
 }
 
 void CGMultiOpenCL::matvecKernel(Vector _x, Vector _y) {
+  if (overlappedGather) {
+    // Start computation on the diagonal that does not require data exchange
+    // between the devices. It is efficient to do so before the gather because
+    // the computation is expected to take longer. This effectively even hides
+    // the overhead of starting the gather.
+    for (MultiDevice &device : devices) {
+      int length = workDistribution->lengths[device.id];
+      cl_mem x = device.getVector(_x);
+      cl_mem y = device.getVector(_y);
+      int yOffset = device.getOffset(_y);
+
+      switch (matrixFormat) {
+      case MatrixFormatCRS:
+        device.checkedEnqueueMatvecKernelCRS(
+            matvecKernelCRS, device.diagMatrixCRS, x, y, yOffset, length);
+        break;
+      case MatrixFormatELL:
+        device.checkedEnqueueMatvecKernelELL(
+            matvecKernelELL, device.diagMatrixELL, x, y, yOffset, length);
+        break;
+      default:
+        assert(0 && "Invalid matrix format!");
+      }
+    }
+  }
+
   matvecGatherXViaHost(_x);
 
   for (MultiDevice &device : devices) {
@@ -263,12 +352,22 @@ void CGMultiOpenCL::matvecKernel(Vector _x, Vector _y) {
 
     switch (matrixFormat) {
     case MatrixFormatCRS:
-      device.checkedEnqueueMatvecKernelCRS(matvecKernelCRS, device.matrixCRS, x,
-                                           y, yOffset, length);
+      if (!overlappedGather) {
+        device.checkedEnqueueMatvecKernelCRS(matvecKernelCRS, device.matrixCRS,
+                                             x, y, yOffset, length);
+      } else {
+        device.checkedEnqueueMatvecKernelCRS(
+            matvecKernelCRSRoundup, device.matrixCRS, x, y, yOffset, length);
+      }
       break;
     case MatrixFormatELL:
-      device.checkedEnqueueMatvecKernelELL(matvecKernelELL, device.matrixELL, x,
-                                           y, yOffset, length);
+      if (!overlappedGather) {
+        device.checkedEnqueueMatvecKernelELL(matvecKernelELL, device.matrixELL,
+                                             x, y, yOffset, length);
+      } else {
+        device.checkedEnqueueMatvecKernelELL(
+            matvecKernelELLRoundup, device.matrixELL, x, y, yOffset, length);
+      }
       break;
     default:
       assert(0 && "Invalid matrix format!");

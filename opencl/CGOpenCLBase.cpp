@@ -194,7 +194,9 @@ void CGOpenCLBase::freeMatrixELLDevice(
   checkedReleaseMemObject(deviceMatrix.data);
 }
 
-CGOpenCLBase::~CGOpenCLBase() {
+void CGOpenCLBase::cleanup() {
+  CG::cleanup();
+
   clReleaseKernel(matvecKernelCRS);
   clReleaseKernel(matvecKernelELL);
   clReleaseKernel(axpyKernelCL);

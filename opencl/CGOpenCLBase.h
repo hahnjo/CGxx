@@ -55,6 +55,8 @@ protected:
 
     /// This device's id.
     cl_device_id device_id;
+    /// The (cached) context.
+    cl_context ctx;
     /// The queue for this device.
     cl_command_queue queue = NULL;
 
@@ -105,11 +107,12 @@ protected:
     ~Device() { clReleaseCommandQueue(queue); }
 
     /// Init device with id \a device_id.
-    void init(cl_device_id device_id, CGOpenCLBase *cg) {
+    virtual void init(cl_device_id device_id, CGOpenCLBase *cg) {
       this->device_id = device_id;
+      this->ctx = cg->ctx;
 
       cl_int err;
-      queue = clCreateCommandQueue(cg->ctx, device_id, 0, &err);
+      queue = clCreateCommandQueue(ctx, device_id, 0, &err);
       checkError(err);
     }
 
@@ -133,10 +136,15 @@ protected:
                                        cl_mem y, int yOffset, int N);
 
     /// Enqueue read of \a buffer.
-    void checkedEnqueueReadBuffer(cl_mem buffer, size_t offset, size_t cb,
-                                  void *ptr) {
+    void checkedEnqueueReadBuffer(cl_command_queue queue, cl_mem buffer,
+                                  size_t offset, size_t cb, void *ptr) {
       checkError(clEnqueueReadBuffer(queue, buffer, CL_FALSE, offset, cb, ptr,
                                      0, NULL, NULL));
+    }
+    /// Enqueue read of \a buffer.
+    void checkedEnqueueReadBuffer(cl_mem buffer, size_t offset, size_t cb,
+                                  void *ptr) {
+      checkedEnqueueReadBuffer(queue, buffer, offset, cb, ptr);
     }
     /// Enqueue read of \a buffer.
     void checkedEnqueueReadBuffer(cl_mem buffer, size_t cb, void *ptr) {
@@ -144,10 +152,15 @@ protected:
     }
 
     /// Enqueue write of \a buffer.
-    void checkedEnqueueWriteBuffer(cl_mem buffer, size_t offset, size_t cb,
-                                   const void *ptr) {
+    void checkedEnqueueWriteBuffer(cl_command_queue queue, cl_mem buffer,
+                                   size_t offset, size_t cb, const void *ptr) {
       checkError(clEnqueueWriteBuffer(queue, buffer, CL_FALSE, offset, cb, ptr,
                                       0, NULL, NULL));
+    }
+    /// Enqueue write of \a buffer.
+    void checkedEnqueueWriteBuffer(cl_mem buffer, size_t offset, size_t cb,
+                                   const void *ptr) {
+      checkedEnqueueWriteBuffer(queue, buffer, offset, cb, ptr);
     }
     /// Enqueue write of \a buffer.
     void checkedEnqueueWriteBuffer(cl_mem buffer, size_t cb, const void *ptr) {
@@ -188,10 +201,9 @@ protected:
   /// @return all devices suitable for computation (excluding CPUs).
   static std::vector<cl_device_id> getAllDevices();
 
-private:
+  /// @return the loaded kernel called \a kernelname.
   cl_kernel checkedCreateKernel(const char *kernelName);
 
-protected:
   /// @return buffer of size \a size created with \a flags.
   cl_mem checkedCreateBufferWithFlags(cl_mem_flags flags, size_t size);
   /// @return read and write buffer.
@@ -223,10 +235,12 @@ protected:
   /// Free \a deviceMatrix.
   void freeMatrixELLDevice(const Device::MatrixELLDevice &deviceMatrix);
 
+  virtual void cleanup() override;
+
 public:
   /// @see CG
-  CGOpenCLBase() : CG(MatrixFormatELL, PreconditionerJacobi) {}
-  ~CGOpenCLBase();
+  CGOpenCLBase(bool overlappedGather = false)
+      : CG(MatrixFormatELL, PreconditionerJacobi, overlappedGather) {}
 };
 
 #endif

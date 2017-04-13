@@ -18,6 +18,23 @@ __kernel void matvecKernelCRS(__global int *ptr, __global int *index,
   }
 }
 
+__kernel void matvecKernelCRSRoundup(__global int *ptr, __global int *index,
+                                     __global floatType *value,
+                                     __global floatType *x,
+                                     __global floatType *y, int yOffset,
+                                     int N) {
+  for (int i = get_global_id(0); i < N; i += get_global_size(0)) {
+    // Skip load and store if nothing to be done...
+    if (ptr[i] != ptr[i + 1]) {
+      floatType tmp = y[yOffset + i];
+      for (int j = ptr[i]; j < ptr[i + 1]; j++) {
+        tmp += value[j] * x[index[j]];
+      }
+      y[yOffset + i] = tmp;
+    }
+  }
+}
+
 __kernel void matvecKernelELL(__global int *length, __global int *index,
                               __global floatType *data, __global floatType *x,
                               __global floatType *y, int yOffset, int N) {
@@ -28,6 +45,23 @@ __kernel void matvecKernelELL(__global int *length, __global int *index,
       tmp += data[k] * x[index[k]];
     }
     y[yOffset + i] = tmp;
+  }
+}
+
+__kernel void matvecKernelELLRoundup(__global int *length, __global int *index,
+                                     __global floatType *data,
+                                     __global floatType *x,
+                                     __global floatType *y, int yOffset,
+                                     int N) {
+  for (int i = get_global_id(0); i < N; i += get_global_size(0)) {
+    if (length[i] > 0) {
+      floatType tmp = y[yOffset + i];
+      for (int j = 0; j < length[i]; j++) {
+        int k = j * N + i;
+        tmp += data[k] * x[index[k]];
+      }
+      y[yOffset + i] = tmp;
+    }
   }
 }
 
