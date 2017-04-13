@@ -45,6 +45,46 @@ std::vector<cl_device_id> CGOpenCLBase::getAllDevices() {
   return devices;
 }
 
+void CGOpenCLBase::Device::checkedEnqueueNDRangeKernel(cl_kernel kernel,
+                                                       size_t global,
+                                                       size_t local) {
+  if (global == 0) {
+    global = this->global;
+  }
+  if (local == 0) {
+    local = Local;
+  }
+
+  checkError(clEnqueueNDRangeKernel(queue, kernel, 1, NULL, &global, &local, 0,
+                                    NULL, NULL));
+}
+
+void CGOpenCLBase::Device::checkedEnqueueMatvecKernelCRS(
+    cl_kernel kernel, MatrixCRSDevice &deviceMatrix, cl_mem x, cl_mem y,
+    int yOffset, int N) {
+  checkedSetKernelArg(kernel, 0, sizeof(cl_mem), &deviceMatrix.ptr);
+  checkedSetKernelArg(kernel, 1, sizeof(cl_mem), &deviceMatrix.index);
+  checkedSetKernelArg(kernel, 2, sizeof(cl_mem), &deviceMatrix.value);
+  checkedSetKernelArg(kernel, 3, sizeof(cl_mem), &x);
+  checkedSetKernelArg(kernel, 4, sizeof(cl_mem), &y);
+  checkedSetKernelArg(kernel, 5, sizeof(int), &yOffset);
+  checkedSetKernelArg(kernel, 6, sizeof(int), &N);
+  checkedEnqueueNDRangeKernel(kernel, globalMatvec);
+}
+
+void CGOpenCLBase::Device::checkedEnqueueMatvecKernelELL(
+    cl_kernel kernel, MatrixELLDevice &deviceMatrix, cl_mem x, cl_mem y,
+    int yOffset, int N) {
+  checkedSetKernelArg(kernel, 0, sizeof(cl_mem), &deviceMatrix.length);
+  checkedSetKernelArg(kernel, 1, sizeof(cl_mem), &deviceMatrix.index);
+  checkedSetKernelArg(kernel, 2, sizeof(cl_mem), &deviceMatrix.data);
+  checkedSetKernelArg(kernel, 3, sizeof(cl_mem), &x);
+  checkedSetKernelArg(kernel, 4, sizeof(cl_mem), &y);
+  checkedSetKernelArg(kernel, 5, sizeof(int), &yOffset);
+  checkedSetKernelArg(kernel, 6, sizeof(int), &N);
+  checkedEnqueueNDRangeKernel(kernel, globalMatvec);
+}
+
 cl_kernel CGOpenCLBase::checkedCreateKernel(const char *kernelName) {
   cl_int err;
   cl_kernel kernel = clCreateKernel(program, kernelName, &err);

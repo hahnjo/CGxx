@@ -141,30 +141,12 @@ void CGOpenCL::matvecKernel(Vector _x, Vector _y) {
 
   switch (matrixFormat) {
   case MatrixFormatCRS:
-    checkedSetKernelArg(matvecKernelCRS, 0, sizeof(cl_mem),
-                        &device.matrixCRS.ptr);
-    checkedSetKernelArg(matvecKernelCRS, 1, sizeof(cl_mem),
-                        &device.matrixCRS.index);
-    checkedSetKernelArg(matvecKernelCRS, 2, sizeof(cl_mem),
-                        &device.matrixCRS.value);
-    checkedSetKernelArg(matvecKernelCRS, 3, sizeof(cl_mem), &x);
-    checkedSetKernelArg(matvecKernelCRS, 4, sizeof(cl_mem), &y);
-    checkedSetKernelArg(matvecKernelCRS, 5, sizeof(int), &ZERO);
-    checkedSetKernelArg(matvecKernelCRS, 6, sizeof(int), &N);
-    device.checkedEnqueueNDRangeKernel(matvecKernelCRS, device.globalMatvec);
+    device.checkedEnqueueMatvecKernelCRS(matvecKernelCRS, device.matrixCRS, x,
+                                         y, ZERO, N);
     break;
   case MatrixFormatELL:
-    checkedSetKernelArg(matvecKernelELL, 0, sizeof(cl_mem),
-                        &device.matrixELL.length);
-    checkedSetKernelArg(matvecKernelELL, 1, sizeof(cl_mem),
-                        &device.matrixELL.index);
-    checkedSetKernelArg(matvecKernelELL, 2, sizeof(cl_mem),
-                        &device.matrixELL.data);
-    checkedSetKernelArg(matvecKernelELL, 3, sizeof(cl_mem), &x);
-    checkedSetKernelArg(matvecKernelELL, 4, sizeof(cl_mem), &y);
-    checkedSetKernelArg(matvecKernelELL, 5, sizeof(int), &ZERO);
-    checkedSetKernelArg(matvecKernelELL, 6, sizeof(int), &N);
-    device.checkedEnqueueNDRangeKernel(matvecKernelELL, device.globalMatvec);
+    device.checkedEnqueueMatvecKernelELL(matvecKernelELL, device.matrixELL, x,
+                                         y, ZERO, N);
     break;
   default:
     assert(0 && "Invalid matrix format!");

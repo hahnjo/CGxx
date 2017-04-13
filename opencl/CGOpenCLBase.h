@@ -122,17 +122,15 @@ protected:
 
     /// Enqueue \a kernel.
     void checkedEnqueueNDRangeKernel(cl_kernel kernel, size_t global = 0,
-                                     size_t local = 0) {
-      if (global == 0) {
-        global = this->global;
-      }
-      if (local == 0) {
-        local = Local;
-      }
-
-      checkError(clEnqueueNDRangeKernel(queue, kernel, 1, NULL, &global, &local,
-                                        0, NULL, NULL));
-    }
+                                     size_t local = 0);
+    /// Enqueue \a kernel.
+    void checkedEnqueueMatvecKernelCRS(cl_kernel kernel,
+                                       MatrixCRSDevice &deviceMatrix, cl_mem x,
+                                       cl_mem y, int yOffset, int N);
+    /// Enqueue \a kernel.
+    void checkedEnqueueMatvecKernelELL(cl_kernel kernel,
+                                       MatrixELLDevice &deviceMatrix, cl_mem x,
+                                       cl_mem y, int yOffset, int N);
 
     /// Enqueue read of \a buffer.
     void checkedEnqueueReadBuffer(cl_mem buffer, size_t offset, size_t cb,
