@@ -10,4 +10,10 @@ if (OpenCL_FOUND)
     CGOpenCL.cpp
   )
   target_link_libraries(cg_ocl ${OpenCL_LIBRARIES})
+
+  add_executable(cg_multi_ocl $<TARGET_OBJECTS:common>
+    CGOpenCLBase.cpp
+    CGMultiOpenCL.cpp
+  )
+  target_link_libraries(cg_multi_ocl ${OpenCL_LIBRARIES})
 endif()
