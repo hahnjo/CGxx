@@ -13,6 +13,8 @@ static inline int getNumberOfDevices() {
 
 /// Class implementing parallel kernels with OpenACC.
 class CGMultiOpenACC : public CG {
+  const int GatherQueue = 2;
+
   std::unique_ptr<floatType[]> p;
   std::unique_ptr<floatType[]> q;
   std::unique_ptr<floatType[]> r;
@@ -45,8 +47,11 @@ class CGMultiOpenACC : public CG {
   }
 
   virtual int getNumberOfChunks() override { return getNumberOfDevices(); }
+  virtual bool supportsOverlappedGather() override { return true; }
 
   virtual void init(const char *matrixFile) override;
+
+  void waitForAllDevicesGatherQueue();
 
   virtual bool needsTransfer() override { return true; }
   virtual void doTransferTo() override;
@@ -55,8 +60,10 @@ class CGMultiOpenACC : public CG {
   virtual void cpy(Vector _dst, Vector _src) override;
 
   void matvecGatherXViaHost(floatType *x);
-  void matvecKernelCRS(floatType *x, floatType *y);
-  void matvecKernelELL(floatType *x, floatType *y);
+  template <bool roundup = false>
+  void matvecKernelCRS(MatrixDataCRS *matrices, floatType *x, floatType *y);
+  template <bool roundup = false>
+  void matvecKernelELL(MatrixDataELL *matrices, floatType *x, floatType *y);
 
   virtual void matvecKernel(Vector _x, Vector _y) override;
   virtual void axpyKernel(floatType a, Vector _x, Vector _y) override;
@@ -68,7 +75,9 @@ class CGMultiOpenACC : public CG {
   virtual void applyPreconditionerKernel(Vector _x, Vector _y) override;
 
 public:
-  CGMultiOpenACC() : CG(MatrixFormatELL, PreconditionerJacobi) {}
+  CGMultiOpenACC()
+      : CG(MatrixFormatELL, PreconditionerJacobi,
+           /* overlappedGather= */ true) {}
 };
 
 void CGMultiOpenACC::init(const char *matrixFile) {
@@ -90,6 +99,13 @@ static inline void waitForAllDevices() {
   for (int d = 0; d < getNumberOfDevices(); d++) {
     acc_set_device_num(d, acc_get_device_type());
     #pragma acc wait
+  }
+}
+
+void CGMultiOpenACC::waitForAllDevicesGatherQueue() {
+  for (int d = 0; d < getNumberOfDevices(); d++) {
+    acc_set_device_num(d, acc_get_device_type());
+    #pragma acc wait(GatherQueue)
   }
 }
 
@@ -131,10 +147,20 @@ void CGMultiOpenACC::doTransferTo() {
                                  copyin(x[0:N], k[offset:length])
     switch (matrixFormat) {
     case MatrixFormatCRS:
-      enterMatrixCRS(splitMatrixCRS->data[d], length);
+      if (!overlappedGather) {
+        enterMatrixCRS(splitMatrixCRS->data[d], length);
+      } else {
+        enterMatrixCRS(partitionedMatrixCRS->diag[d], length);
+        enterMatrixCRS(partitionedMatrixCRS->minor[d], length);
+      }
       break;
     case MatrixFormatELL:
-      enterMatrixELL(splitMatrixELL->data[d], length);
+      if (!overlappedGather) {
+        enterMatrixELL(splitMatrixELL->data[d], length);
+      } else {
+        enterMatrixELL(partitionedMatrixELL->diag[d], length);
+        enterMatrixELL(partitionedMatrixELL->minor[d], length);
+      }
       break;
     default:
       assert(0 && "Invalid matrix format!");
@@ -197,10 +223,20 @@ void CGMultiOpenACC::doTransferFrom() {
                                 delete(x[0:N])
     switch (matrixFormat) {
     case MatrixFormatCRS:
-      exitMatrixCRS(splitMatrixCRS->data[d], length);
+      if (!overlappedGather) {
+        exitMatrixCRS(splitMatrixCRS->data[d], length);
+      } else {
+        exitMatrixCRS(partitionedMatrixCRS->diag[d], length);
+        exitMatrixCRS(partitionedMatrixCRS->minor[d], length);
+      }
       break;
     case MatrixFormatELL:
-      exitMatrixELL(splitMatrixELL->data[d], length);
+      if (!overlappedGather) {
+        exitMatrixELL(splitMatrixELL->data[d], length);
+      } else {
+        exitMatrixELL(partitionedMatrixELL->diag[d], length);
+        exitMatrixELL(partitionedMatrixELL->minor[d], length);
+      }
       break;
     default:
       assert(0 && "Invalid matrix format!");
@@ -249,9 +285,9 @@ void CGMultiOpenACC::matvecGatherXViaHost(floatType *x) {
     int offset = workDistribution->offsets[d];
     int length = workDistribution->lengths[d];
 
-    #pragma acc update async host(x[offset:length])
+    #pragma acc update async(GatherQueue) host(x[offset:length])
   }
-  waitForAllDevices();
+  waitForAllDevicesGatherQueue();
 
   // Transfer x to devices.
   for (int d = 0; d < getNumberOfDevices(); d++) {
@@ -265,13 +301,17 @@ void CGMultiOpenACC::matvecGatherXViaHost(floatType *x) {
       int offset = workDistribution->offsets[src];
       int length = workDistribution->lengths[src];
 
-      #pragma acc update async device(x[offset:length])
+      #pragma acc update async(GatherQueue) device(x[offset:length])
     }
   }
-  waitForAllDevices();
+  if (!overlappedGather) {
+    waitForAllDevicesGatherQueue();
+  }
 }
 
-void CGMultiOpenACC::matvecKernelCRS(floatType *x, floatType *y) {
+template <bool roundup>
+void CGMultiOpenACC::matvecKernelCRS(MatrixDataCRS *matrices, floatType *x,
+                                     floatType *y) {
   int N = this->N;
 
   for (int d = 0; d < getNumberOfDevices(); d++) {
@@ -279,26 +319,33 @@ void CGMultiOpenACC::matvecKernelCRS(floatType *x, floatType *y) {
     int offset = workDistribution->offsets[d];
     int length = workDistribution->lengths[d];
 
-    int *ptr = splitMatrixCRS->data[d].ptr;
+    int *ptr = matrices[d].ptr;
     int nz = ptr[length];
-    int *index = splitMatrixCRS->data[d].index;
-    floatType *value = splitMatrixCRS->data[d].value;
+    int *index = matrices[d].index;
+    floatType *value = matrices[d].value;
 
 #pragma acc parallel loop async gang vector present(x[0:N], y[offset:length]) \
                           present(ptr[0:length+1], index[0:nz], value[0:nz])
     for (int i = 0; i < length; i++) {
-      floatType tmp = 0;
-      for (int j = ptr[i]; j < ptr[i + 1]; j++) {
-        tmp += value[j] * x[index[j]];
+      // Skip load and store if nothing to be done...
+      if (!roundup || ptr[i] != ptr[i + 1]) {
+        floatType tmp = (roundup ? y[offset + i] : 0);
+        for (int j = ptr[i]; j < ptr[i + 1]; j++) {
+          tmp += value[j] * x[index[j]];
+        }
+        y[offset + i] = tmp;
       }
-      y[offset + i] = tmp;
     }
   }
 
-  waitForAllDevices();
+  if (!overlappedGather) {
+    waitForAllDevices();
+  }
 }
 
-void CGMultiOpenACC::matvecKernelELL(floatType *x, floatType *y) {
+template <bool roundup>
+void CGMultiOpenACC::matvecKernelELL(MatrixDataELL *matrices, floatType *x,
+                                     floatType *y) {
   int N = this->N;
 
   for (int d = 0; d < getNumberOfDevices(); d++) {
@@ -306,43 +353,87 @@ void CGMultiOpenACC::matvecKernelELL(floatType *x, floatType *y) {
     int offset = workDistribution->offsets[d];
     int length = workDistribution->lengths[d];
 
-    int elements = splitMatrixELL->data[d].elements;
-    int *lengthA = splitMatrixELL->data[d].length;
-    int *index = splitMatrixELL->data[d].index;
-    floatType *data = splitMatrixELL->data[d].data;
+    int elements = matrices[d].elements;
+    int *lengthA = matrices[d].length;
+    int *index = matrices[d].index;
+    floatType *data = matrices[d].data;
 
 #pragma acc parallel loop async gang vector present(x[0:N], y[offset:length]) \
                           present(lengthA[0:length], index[0:elements]) \
                           present(data[0:elements])
     for (int i = 0; i < length; i++) {
-      floatType tmp = 0;
-      for (int j = 0; j < lengthA[i]; j++) {
-        // long is to work-around an overflow in address calculation...
-        long k = j * length + i;
-        tmp += data[k] * x[index[k]];
+      // Skip load and store if nothing to be done...
+      if (!roundup || lengthA[i] > 0) {
+        floatType tmp = (roundup ? y[offset + i] : 0);
+        for (int j = 0; j < lengthA[i]; j++) {
+          // long is to work-around an overflow in address calculation...
+          long k = j * length + i;
+          tmp += data[k] * x[index[k]];
+        }
+        y[offset + i] = tmp;
       }
-      y[offset + i] = tmp;
     }
   }
 
-  waitForAllDevices();
+  if (!overlappedGather) {
+    waitForAllDevices();
+  }
 }
 
 void CGMultiOpenACC::matvecKernel(Vector _x, Vector _y) {
   floatType *x = getVector(_x);
   floatType *y = getVector(_y);
 
+  if (overlappedGather) {
+    // Start computation on the diagonal that does not require data exchange
+    // between the devices. It is efficient to do so before the gather because
+    // the computation is expected to take longer. This effectively even hides
+    // the overhead of starting the gather.
+    switch (matrixFormat) {
+    case MatrixFormatCRS:
+      matvecKernelCRS(partitionedMatrixCRS->diag.get(), x, y);
+      break;
+    case MatrixFormatELL:
+      matvecKernelELL(partitionedMatrixELL->diag.get(), x, y);
+      break;
+    default:
+      assert(0 && "Invalid matrix format!");
+    }
+  }
+
   matvecGatherXViaHost(x);
+
+  if (overlappedGather) {
+    // Add asynchronous wait for GatherQueue so that the following computation
+    // executes after the communication has finished.
+    for (int d = 0; d < getNumberOfDevices(); d++) {
+      acc_set_device_num(d, acc_get_device_type());
+      #pragma acc wait(GatherQueue) async
+    }
+  }
 
   switch (matrixFormat) {
   case MatrixFormatCRS:
-    matvecKernelCRS(x, y);
+    if (!overlappedGather) {
+      matvecKernelCRS(splitMatrixCRS->data.get(), x, y);
+    } else {
+      matvecKernelCRS<true>(partitionedMatrixCRS->minor.get(), x, y);
+    }
     break;
   case MatrixFormatELL:
-    matvecKernelELL(x, y);
+    if (!overlappedGather) {
+      matvecKernelELL(splitMatrixELL->data.get(), x, y);
+    } else {
+      matvecKernelELL<true>(partitionedMatrixELL->minor.get(), x, y);
+    }
     break;
   default:
     assert(0 && "Invalid matrix format!");
+  }
+
+  if (overlappedGather) {
+    // Wait for devices - this was skipped before!
+    waitForAllDevices();
   }
 }
 
