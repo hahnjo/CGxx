@@ -450,7 +450,13 @@ int main(int argc, char *argv[]) {
     std::exit(1);
   }
 
+#ifdef __PGI
+  // The PGI compiler doesn't like freeing this object together with pinned
+  // memoy. So leak the memory on purpose...
+  CG *cg = CG::getInstance();
+#else
   std::unique_ptr<CG> cg(CG::getInstance());
+#endif
   cg->parseEnvironment();
   cg->init(argv[1]);
 
