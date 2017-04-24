@@ -6,4 +6,8 @@ if (OPENACC_FOUND)
   add_executable(cg_acc $<TARGET_OBJECTS:common>
     CGOpenACC.cpp
   )
+
+  add_executable(cg_multi_acc $<TARGET_OBJECTS:common>
+    CGMultiOpenACC.cpp
+  )
 endif()
