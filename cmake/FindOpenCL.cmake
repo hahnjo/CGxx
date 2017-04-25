@@ -117,7 +117,11 @@ if(WIN32)
   endif()
 else()
   find_library(OpenCL_LIBRARY
-    NAMES OpenCL)
+    NAMES OpenCL
+    PATHS
+      ENV INTELOCLSDKROOT
+    PATH_SUFFIXES
+      lib64)
 endif()
 
 set(OpenCL_LIBRARIES ${OpenCL_LIBRARY})
