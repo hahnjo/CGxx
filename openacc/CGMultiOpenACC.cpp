@@ -115,7 +115,7 @@ static inline void enterMatrixCRS(const MatrixDataCRS &matrix, int N) {
   int *index = matrix.index;
   floatType *value = matrix.value;
 
-  #pragma acc enter data copyin(ptr[0:N+1], index[0:nz], value[0:nz])
+  #pragma acc enter data async copyin(ptr[0:N+1], index[0:nz], value[0:nz])
 }
 
 static inline void enterMatrixELL(const MatrixDataELL &matrix, int N) {
@@ -129,18 +129,18 @@ static inline void enterMatrixELL(const MatrixDataELL &matrix, int N) {
 }
 
 void CGMultiOpenACC::doTransferTo() {
+  // Allocate memory on the device with plain pointers.
+  int N = this->N;
+  floatType *p = this->p.get();
+  floatType *q = this->q.get();
+  floatType *r = this->r.get();
+  floatType *x = this->x;
+  floatType *k = this->k;
+
   for (int d = 0; d < getNumberOfDevices(); d++) {
     acc_set_device_num(d, acc_get_device_type());
     int offset = workDistribution->offsets[d];
     int length = workDistribution->lengths[d];
-
-    // Allocate memory on the device with plain pointers.
-    int N = this->N;
-    floatType *p = this->p.get();
-    floatType *q = this->q.get();
-    floatType *r = this->r.get();
-    floatType *x = this->x;
-    floatType *k = this->k;
 
     #pragma acc enter data async create(p[0:N], q[offset:length]) \
                                  create(r[offset:length]) \
@@ -190,7 +190,7 @@ static inline void exitMatrixCRS(const MatrixDataCRS &matrix, int N) {
   int *index = matrix.index;
   floatType *value = matrix.value;
 
-  #pragma acc exit data delete(ptr[0:N+1], index[0:nz], value[0:nz])
+  #pragma acc exit data async delete(ptr[0:N+1], index[0:nz], value[0:nz])
 }
 
 static inline void exitMatrixELL(const MatrixDataELL &matrix, int N) {
@@ -204,18 +204,18 @@ static inline void exitMatrixELL(const MatrixDataELL &matrix, int N) {
 }
 
 void CGMultiOpenACC::doTransferFrom() {
+  // Free memory on the device with plain pointers.
+  int N = this->N;
+  floatType *p = this->p.get();
+  floatType *q = this->q.get();
+  floatType *r = this->r.get();
+  floatType *x = this->x;
+  floatType *k = this->k;
+
   for (int d = 0; d < getNumberOfDevices(); d++) {
     acc_set_device_num(d, acc_get_device_type());
     int offset = workDistribution->offsets[d];
     int length = workDistribution->lengths[d];
-
-    // Free memory on the device with plain pointers.
-    int N = this->N;
-    floatType *p = this->p.get();
-    floatType *q = this->q.get();
-    floatType *r = this->r.get();
-    floatType *x = this->x;
-    floatType *k = this->k;
 
     #pragma acc update async host(x[offset:length])
     #pragma acc exit data async delete(p[0:N], q[offset:length]) \
