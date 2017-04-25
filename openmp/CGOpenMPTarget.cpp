@@ -191,10 +191,11 @@ void CGOpenMPTarget::matvecKernelCRS(floatType *x, floatType *y) {
   int *index = matrixCRS->index;
   floatType *value = matrixCRS->value;
 
-#pragma omp target teams distribute parallel for simd map(x[0:N], y[0:N]) \
+#pragma omp target teams distribute parallel for map(x[0:N], y[0:N]) \
                    map(ptr[0:N+1], index[0:nz], value[0:nz])
   for (int i = 0; i < N; i++) {
     floatType tmp = 0;
+    #pragma omp simd reduction(+:tmp)
     for (int j = ptr[i]; j < ptr[i + 1]; j++) {
       tmp += value[j] * x[index[j]];
     }
