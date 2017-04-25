@@ -36,6 +36,7 @@ void CG::parseEnvironment() {
 
   env = std::getenv(CG_MAX_ITER);
   if (env != NULL && *env != 0) {
+    errno = 0;
     int maxIterations = strtol(env, &endptr, 0);
     if (errno == 0 && *endptr == 0 && maxIterations > 0) {
       this->maxIterations = maxIterations;
@@ -47,6 +48,7 @@ void CG::parseEnvironment() {
 
   env = std::getenv(CG_TOLERANCE);
   if (env != NULL && *env != 0) {
+    errno = 0;
     floatType tolerance = strtod(env, &endptr);
     if (errno == 0 && *endptr == 0 && tolerance > 0) {
       this->tolerance = tolerance;
