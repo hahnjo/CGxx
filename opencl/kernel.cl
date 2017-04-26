@@ -2,10 +2,17 @@ R"(
 
 // Keep in sync with def.h!
 typedef double floatType;
+typedef double8 floatType8;
 
 // inspired by
 // https://devblogs.nvidia.com/parallelforall/cuda-pro-tip-write-flexible-kernels-grid-stride-loops/
 
+// vec_type_hint tells the compiler that the kernel was optimized manually using
+// vector data types. This actually not true but is the only way I found to
+// prevent implicit vectorization by means of packing work-items together.
+// Without this transformation, the loop vectorizer can successfully optimize
+// the inner loop which is needed for better performance.
+__attribute__((vec_type_hint(floatType8)))
 __kernel void matvecKernelCRS(__global int *ptr, __global int *index,
                               __global floatType *value, __global floatType *x,
                               __global floatType *y, int yOffset, int N) {
@@ -18,6 +25,8 @@ __kernel void matvecKernelCRS(__global int *ptr, __global int *index,
   }
 }
 
+// See above...
+__attribute__((vec_type_hint(floatType8)))
 __kernel void matvecKernelCRSRoundup(__global int *ptr, __global int *index,
                                      __global floatType *value,
                                      __global floatType *x,
