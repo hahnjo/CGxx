@@ -439,7 +439,7 @@ void CG::printSummary() {
 
   printPadded("axpy time:", std::to_string(timing.axpy.count()));
   printPadded("xpay time:", std::to_string(timing.xpay.count()));
-  printPadded("vectorDot time:", std::to_string(timing.xpay.count()));
+  printPadded("vectorDot time:", std::to_string(timing.vectorDot.count()));
   if (preconditioner != PreconditionerNone) {
     printPadded("Preconditioner time:",
                 std::to_string(timing.preconditioner.count()));
