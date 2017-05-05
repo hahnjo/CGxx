@@ -18,6 +18,10 @@ if (CGXX_HAVE_WALL_FLAG)
   set(CMAKE_CXX_FLAGS "-Wall ${CMAKE_CXX_FLAGS}")
 endif()
 
+if ("${CMAKE_C_COMPILER_ID}" STREQUAL "GNU")
+  option(GCC_OFFLOADING "Use offloading with the GNU Compiler Collection" OFF)
+endif()
+
 add_library(common OBJECT
   CG.cpp
   Matrix.cpp

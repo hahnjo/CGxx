@@ -25,6 +25,8 @@ if ("${CMAKE_C_COMPILER_ID}" STREQUAL "Clang")
     set(OPENMP_TARGET_FLAGS
       "${OPENMP_TARGET_FLAGS} --cuda-path=${CUDA_TOOLKIT_ROOT_DIR}")
   endif()
+elseif ("${CMAKE_C_COMPILER_ID}" STREQUAL "GNU" AND GCC_OFFLOADING)
+  set(OPENMP_TARGET_FLAGS "-fopenmp")
 elseif ("${CMAKE_C_COMPILER_ID}" STREQUAL "Intel")
   set(OPENMP_TARGET_FLAGS "-qopenmp")
 elseif ("${CMAKE_C_COMPILER_ID}" STREQUAL "XL")
