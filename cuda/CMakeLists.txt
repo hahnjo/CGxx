@@ -1,5 +1,13 @@
 if ("${CMAKE_C_COMPILER_ID}" MATCHES "Clang|XL")
+  message(STATUS "${CMAKE_C_COMPILER_ID} is not supported with CUDA")
   return()
+elseif ("${CMAKE_C_COMPILER_ID}" MATCHES "GNU")
+  execute_process(COMMAND ${CMAKE_C_COMPILER} -dumpversion
+                OUTPUT_VARIABLE GCC_VERSION)
+  if (GCC_VERSION VERSION_GREATER 5)
+    message(STATUS "GCC later than 5 is not supported with CUDA")
+    return()
+  endif()
 endif()
 
 find_package(CUDA)
