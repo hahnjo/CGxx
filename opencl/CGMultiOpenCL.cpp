@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <cassert>
 #include <cmath>
 #include <memory>
@@ -15,6 +16,11 @@
 
 /// Class implementing parallel kernels with OpenCL.
 class CGMultiOpenCL : public CGOpenCLBase {
+  enum GatherImpl {
+    GatherImplHost,
+    GatherImplDevice,
+  };
+
   struct MultiDevice : Device {
     int id;
     WorkDistribution *workDistribution;
@@ -46,6 +52,7 @@ class CGMultiOpenCL : public CGOpenCLBase {
   };
 
   std::vector<MultiDevice> devices;
+  GatherImpl gatherImpl = GatherImplHost;
 
   std::unique_ptr<floatType[]> p;
 
@@ -55,6 +62,7 @@ class CGMultiOpenCL : public CGOpenCLBase {
   virtual int getNumberOfChunks() override { return devices.size(); }
   virtual bool supportsOverlappedGather() override { return true; }
 
+  virtual void parseEnvironment() override;
   virtual void init(const char *matrixFile) override;
 
   void finishAllDevices();
@@ -66,7 +74,7 @@ class CGMultiOpenCL : public CGOpenCLBase {
   virtual void cpy(Vector _dst, Vector _src) override;
 
   void matvecGatherXViaHost(Vector _x);
-
+  void matvecGatherXOnDevices(Vector _x);
   virtual void matvecKernel(Vector _x, Vector _y) override;
 
   virtual void axpyKernel(floatType a, Vector _x, Vector _y) override;
@@ -75,6 +83,7 @@ class CGMultiOpenCL : public CGOpenCLBase {
 
   virtual void applyPreconditionerKernel(Vector _x, Vector _y) override;
 
+  virtual void printSummary() override;
   virtual void cleanup() override {
     CGOpenCLBase::cleanup();
 
@@ -87,6 +96,32 @@ class CGMultiOpenCL : public CGOpenCLBase {
 public:
   CGMultiOpenCL() : CGOpenCLBase(/* overlappedGather= */ true) {}
 };
+
+const char *CG_OCL_GATHER_IMPL = "CG_OCL_GATHER_IMPL";
+const char *CG_OCL_GATHER_IMPL_HOST = "host";
+const char *CG_OCL_GATHER_IMPL_DEVICE = "device";
+
+void CGMultiOpenCL::parseEnvironment() {
+  CG::parseEnvironment();
+
+  const char *env = std::getenv(CG_OCL_GATHER_IMPL);
+  if (env != NULL && *env != 0) {
+    std::string lower(env);
+    std::transform(lower.begin(), lower.end(), lower.begin(),
+                   [](char c) { return std::tolower(c); });
+
+    if (lower == CG_OCL_GATHER_IMPL_HOST) {
+      gatherImpl = GatherImplHost;
+    } else if (lower == CG_OCL_GATHER_IMPL_DEVICE) {
+      gatherImpl = GatherImplDevice;
+    } else {
+      std::cerr << "Invalid value for " << CG_OCL_GATHER_IMPL << "! ("
+                << CG_OCL_GATHER_IMPL_HOST << ", or "
+                << CG_OCL_GATHER_IMPL_DEVICE << ")" << std::endl;
+      std::exit(1);
+    }
+  }
+}
 
 void CGMultiOpenCL::init(const char *matrixFile) {
   // Init all devices and don't read matrix when there is none available.
@@ -119,7 +154,9 @@ void CGMultiOpenCL::init(const char *matrixFile) {
     device.calculateLaunchConfiguration(length);
   }
 
-  p.reset(new floatType[N]);
+  if (gatherImpl == GatherImplHost) {
+    p.reset(new floatType[N]);
+  }
 }
 
 void CGMultiOpenCL::finishAllDevices() {
@@ -315,6 +352,31 @@ void CGMultiOpenCL::matvecGatherXViaHost(Vector _x) {
   finishAllDevicesGatherQueue();
 }
 
+void CGMultiOpenCL::matvecGatherXOnDevices(Vector _x) {
+  for (MultiDevice &device : devices) {
+    cl_mem x = device.getVector(_x);
+
+    for (MultiDevice &src : devices) {
+      if (src.id == device.id) {
+        // Don't transfer chunk that is already on the device.
+        continue;
+      }
+
+      int offset = workDistribution->offsets[src.id];
+      int length = workDistribution->lengths[src.id];
+      cl_mem xSrc = src.getVector(_x);
+      assert(offset == device.getOffset(_x));
+      size_t offsetInBytes = sizeof(floatType) * offset;
+
+      checkError(clEnqueueCopyBuffer(device.gatherQueue, xSrc, x, offsetInBytes,
+                                     offsetInBytes, sizeof(floatType) * length,
+                                     0, NULL, NULL));
+    }
+  }
+
+  finishAllDevicesGatherQueue();
+}
+
 void CGMultiOpenCL::matvecKernel(Vector _x, Vector _y) {
   if (overlappedGather) {
     // Start computation on the diagonal that does not require data exchange
@@ -342,7 +404,16 @@ void CGMultiOpenCL::matvecKernel(Vector _x, Vector _y) {
     }
   }
 
-  matvecGatherXViaHost(_x);
+  switch (gatherImpl) {
+  case GatherImplHost:
+    matvecGatherXViaHost(_x);
+    break;
+  case GatherImplDevice:
+    matvecGatherXOnDevices(_x);
+    break;
+  default:
+    assert(0 && "Invalid gather implementation!");
+  }
 
   for (MultiDevice &device : devices) {
     int length = workDistribution->lengths[device.id];
@@ -491,6 +562,23 @@ void CGMultiOpenCL::applyPreconditionerKernel(Vector _x, Vector _y) {
   }
 
   finishAllDevices();
+}
+
+void CGMultiOpenCL::printSummary() {
+  CG::printSummary();
+
+  std::cout << std::endl;
+  std::string gatherImplName;
+  switch (gatherImpl) {
+  case GatherImplHost:
+    gatherImplName = "via host";
+    break;
+  case GatherImplDevice:
+    gatherImplName = "between devices";
+    break;
+  }
+  assert(gatherImplName.length() > 0);
+  printPadded("Gather implementation:", gatherImplName);
 }
 
 CG *CG::getInstance() { return new CGMultiOpenCL; }
