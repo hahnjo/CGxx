@@ -182,8 +182,7 @@ void CGMultiCUDA::parseEnvironment() {
   const char *env = std::getenv(CG_CUDA_GATHER_IMPL);
   if (env != NULL && *env != 0) {
     std::string lower(env);
-    std::transform(lower.begin(), lower.end(), lower.begin(),
-                   [](char c) { return std::tolower(c); });
+    std::transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
 
     if (lower == CG_CUDA_GATHER_IMPL_HOST) {
       gatherImpl = GatherImplHost;

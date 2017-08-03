@@ -4,7 +4,6 @@
 #include <cstring>
 #include <iomanip>
 #include <iostream>
-#include <locale>
 #include <memory>
 #include <sstream>
 
@@ -61,8 +60,7 @@ void CG::parseEnvironment() {
   env = std::getenv(CG_MATRIX_FORMAT);
   if (env != NULL && *env != 0) {
     std::string upper(env);
-    std::transform(upper.begin(), upper.end(), upper.begin(),
-                   [](char c) { return std::toupper(c); });
+    std::transform(upper.begin(), upper.end(), upper.begin(), ::toupper);
 
     if (upper == CG_MATRIX_FORMAT_COO) {
       matrixFormat = MatrixFormatCOO;
@@ -86,8 +84,7 @@ void CG::parseEnvironment() {
   env = std::getenv(CG_PRECONDITIONER);
   if (env != NULL && *env != 0) {
     std::string lower(env);
-    std::transform(lower.begin(), lower.end(), lower.begin(),
-                   [](char c) { return std::tolower(c); });
+    std::transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
 
     if (lower == CG_PRECONDITIONER_NONE) {
       preconditioner = PreconditionerNone;
@@ -110,8 +107,7 @@ void CG::parseEnvironment() {
   env = std::getenv(CG_WORK_DISTRIBUTION);
   if (env != NULL && *env != 0) {
     std::string lower(env);
-    std::transform(lower.begin(), lower.end(), lower.begin(),
-                   [](char c) { return std::tolower(c); });
+    std::transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
 
     if (lower == CG_WORK_DISTRIBUTION_BY_ROW) {
       workDistributionCalc = WorkDistributionByRow;
