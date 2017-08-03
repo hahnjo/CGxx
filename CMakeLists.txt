@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 2.8)
 
-project(CGxx CXX)
+project(CGxx C CXX)
 if (${CMAKE_CXX_FLAGS} MATCHES "-qhalt=e")
   string(REPLACE "-qhalt=e" "" CMAKE_CXX_FLAGS ${CMAKE_CXX_FLAGS})
 endif()
