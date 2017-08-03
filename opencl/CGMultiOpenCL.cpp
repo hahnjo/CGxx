@@ -27,6 +27,7 @@
 #include "../Preconditioner.h"
 #include "../WorkDistribution.h"
 #include "CGOpenCLBase.h"
+#include "clSVM.h"
 #include "utils.h"
 
 #define CL_USE_DEPRECATED_OPENCL_1_2_APIS
@@ -72,7 +73,7 @@ class CGMultiOpenCL : public CGOpenCLBase {
   std::vector<MultiDevice> devices;
   GatherImpl gatherImpl = GatherImplHost;
 
-  std::unique_ptr<floatType[]> p;
+  floatType *p;
 
   cl_kernel matvecKernelCRSRoundup = NULL;
   cl_kernel matvecKernelELLRoundup = NULL;
@@ -103,6 +104,14 @@ class CGMultiOpenCL : public CGOpenCLBase {
 
   virtual void printSummary() override;
   virtual void cleanup() override {
+    if (gatherImpl == GatherImplHost) {
+#if OPENCL_USE_SVM
+      clSVMFree(ctx, p);
+#else
+      delete[] p;
+#endif
+    }
+
     CGOpenCLBase::cleanup();
 
     if (overlappedGather) {
@@ -172,7 +181,12 @@ void CGMultiOpenCL::init(const char *matrixFile) {
   }
 
   if (gatherImpl == GatherImplHost) {
-    p.reset(new floatType[N]);
+#if OPENCL_USE_SVM
+    p = (floatType *)clSVMAlloc(ctx, CL_MEM_READ_WRITE, sizeof(floatType) * N,
+                                0);
+#else
+    p = new floatType[N];
+#endif
   }
 }
 
@@ -329,7 +343,7 @@ void CGMultiOpenCL::matvecGatherXViaHost(Vector _x) {
     xHost = x;
     break;
   case VectorP:
-    xHost = p.get();
+    xHost = p;
     break;
   default:
     assert(0 && "Invalid vector!");
