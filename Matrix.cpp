@@ -1,87 +1,111 @@
+#include <algorithm>
 #include <cassert>
-#include <cstdio>
 #include <cstring>
+#include <fstream>
 #include <iostream>
+#include <sstream>
 
 #include "Matrix.h"
 #include "WorkDistribution.h"
 
-extern "C" {
-#include "mmio.h"
-};
-
 MatrixCOO::MatrixCOO(const char *file) {
-  FILE *fp = fopen(file, "r");
-  if (fp == NULL) {
-    std::cerr << "ERROR: Can't open file!" << std::endl;
-    std::exit(1);
-  }
-
-  MM_typecode matcode;
-  if (mm_read_banner(fp, &matcode) != 0) {
-    std::cerr << "ERROR: Could not process Matrix Market banner!" << std::endl;
-    std::exit(1);
-  }
-
-  // Check properties.
-  if (!mm_is_sparse(matcode) || !mm_is_real(matcode)) {
-    std::cerr << "ERROR: Only supporting real matrixes in coordinate format!";
-    std::cerr << " (type: " << mm_typecode_to_str(matcode) << ")" << std::endl;
-    std::exit(1);
-  }
-
-  int M;
-  if (mm_read_mtx_crd_size(fp, &M, &N, &nz) != 0) {
-    std::cerr << "ERROR: Could not read matrix size!" << std::endl;
-    std::exit(1);
-  }
-
-  if (N != M) {
-    std::cerr << "ERROR: Need a quadratic matrix!" << std::endl;
-    std::exit(1);
-  }
-
-  bool symmetric = mm_is_symmetric(matcode);
-  if (symmetric) {
-    // Store upper and lower triangular!
-    nz = 2 * nz - N;
-  }
-
-  // Allocate memory. No implementation will need to "optimize" this because
-  // MatrixCOO is not really meant to be used in "real" computations.
-  I.reset(new int[nz]);
-  J.reset(new int[nz]);
-  V.reset(new floatType[nz]);
-  nzPerRow.reset(new int[N]);
-  std::memset(nzPerRow.get(), 0, sizeof(int) * N);
-
-  // Read matrix.
-  for (int i = 0; i < nz; i++) {
-    if (fscanf(fp, "%d %d %lg\n", &I[i], &J[i], &V[i]) != 3) {
-      std::cerr << "ERROR: Could not read line!" << std::endl;
+  try {
+    std::ifstream is(file);
+    if (!is.is_open()) {
+      std::cerr << "Can't open file with matrix!" << std::endl;
       std::exit(1);
     }
 
-    // Adjust from 1-based to 0-based.
-    I[i]--;
-    J[i]--;
+    // Read first line.
+    std::string line;
+    std::stringstream ss;
+    getline(is, line);
+    ss.str(line);
 
-    // Count nz for each row.
-    nzPerRow[I[i]]++;
+    std::string banner, mtx, crd, type, storage;
+    ss >> banner >> mtx >> crd >> type >> storage;
+    // Transform to lower case for comparison.
+    std::transform(mtx.begin(), mtx.end(), mtx.begin(), ::tolower);
+    std::transform(crd.begin(), crd.end(), crd.begin(), ::tolower);
+    std::transform(type.begin(), type.end(), type.begin(), ::tolower);
+    std::transform(storage.begin(), storage.end(), storage.begin(), ::tolower);
 
-    // If not on the main diagonal, we have to duplicate the entry.
-    if (symmetric && I[i] != J[i]) {
-      i++;
-      I[i] = J[i - 1];
-      J[i] = I[i - 1];
-      V[i] = V[i - 1];
-
-      // Count nz for each row. I[i] is now J[i -1]!
-      nzPerRow[I[i]]++;
+    if (banner != "\%\%MatrixMarket" || mtx != "matrix" ||
+        crd != "coordinate" || type != "real") {
+      std::cerr << "Only supporting real matrices in coordinate format!"
+                << std::endl;
+      std::exit(1);
     }
-  }
 
-  fclose(fp);
+    bool symmetric = false;
+    if (storage == "symmetric") {
+      symmetric = true;
+    } else if (storage != "general") {
+      std::cerr << "Only supporting general or symmetric matrices!"
+                << std::endl;
+      std::exit(1);
+    }
+
+    // Skip following lines with comments.
+    do {
+      getline(is, line);
+    } while (line.size() == 0 || line[0] == '%');
+
+    // Read dimensions.
+    int M;
+    ss.str(line);
+    ss.clear();
+    ss >> M >> N >> nz;
+
+    if (N != M) {
+      std::cerr << "Need a square matrix!" << std::endl;
+      std::exit(1);
+    }
+
+    if (symmetric) {
+      // Store upper and lower triangular!
+      nz = 2 * nz - N;
+    }
+
+    // Allocate memory. No implementation will need to "optimize" this because
+    // MatrixCOO is not really meant to be used in "real" computations.
+    I.reset(new int[nz]);
+    J.reset(new int[nz]);
+    V.reset(new floatType[nz]);
+    nzPerRow.reset(new int[N]);
+    std::memset(nzPerRow.get(), 0, sizeof(int) * N);
+
+    // Read matrix.
+    for (int i = 0; i < nz; i++) {
+      getline(is, line);
+      ss.str(line);
+      ss.clear();
+      ss >> I[i] >> J[i] >> V[i];
+
+      // Adjust from 1-based to 0-based.
+      I[i]--;
+      J[i]--;
+
+      // Count nz for each row.
+      nzPerRow[I[i]]++;
+
+      // If not on the main diagonal, we have to duplicate the entry.
+      if (symmetric && I[i] != J[i]) {
+        i++;
+        I[i] = J[i - 1];
+        J[i] = I[i - 1];
+        V[i] = V[i - 1];
+
+        // Count nz for each row. I[i] is now J[i - 1]!
+        nzPerRow[I[i]]++;
+      }
+    }
+
+    is.close();
+  } catch (...) {
+    std::cerr << "An exception occurred while reading the matrix!" << std::endl;
+    std::exit(1);
+  }
 }
 
 int MatrixCOO::getMaxNz(int from, int to) const {

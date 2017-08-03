@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 2.8)
 
-project(CGxx C CXX)
+project(CGxx CXX)
 if (${CMAKE_CXX_FLAGS} MATCHES "-qhalt=e")
   string(REPLACE "-qhalt=e" "" CMAKE_CXX_FLAGS ${CMAKE_CXX_FLAGS})
 endif()
@@ -27,7 +27,6 @@ add_library(common OBJECT
   Matrix.cpp
   Preconditioner.cpp
   WorkDistribution.cpp
-  mmio.c
 )
 
 add_subdirectory(cuda)
