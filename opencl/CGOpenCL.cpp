@@ -31,11 +31,31 @@
 
 /// Class implementing parallel kernels with OpenCL.
 class CGOpenCL : public CGOpenCLBase {
+#if OPENCL_USE_SVM
+  struct MatrixCRSSVM : MatrixCRS, MatrixDataCRSSVM {
+    MatrixCRSSVM(const MatrixCOO &coo, CGOpenCL *cg)
+        : MatrixCRS(coo), MatrixDataCRSSVM(cg) {}
+  };
+  struct MatrixELLSVM : MatrixELL, MatrixDataELLSVM {
+    MatrixELLSVM(const MatrixCOO &coo, CGOpenCL *cg)
+        : MatrixELL(coo), MatrixDataELLSVM(cg) {}
+  };
+#endif
+
   static const int ZERO;
 
   Device device;
 
   virtual void init(const char *matrixFile) override;
+
+#if OPENCL_USE_SVM
+  virtual void convertToMatrixCRS() override {
+    matrixCRS.reset(new MatrixCRSSVM(*matrixCOO, this));
+  }
+  virtual void convertToMatrixELL() override {
+    matrixELL.reset(new MatrixELLSVM(*matrixCOO, this));
+  }
+#endif
 
   virtual void doTransferTo() override;
   virtual void doTransferFrom() override;
