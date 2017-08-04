@@ -144,19 +144,6 @@ class CGMultiCUDA : public CGCUDABase {
         new PartitionedMatrixELLCUDA(*matrixCOO, *workDistribution));
   }
 
-  virtual void initJacobi() override {
-    jacobi.reset(new JacobiCUDA(*matrixCOO));
-  }
-
-  virtual void allocateK() override {
-    checkedMallocHost(&k, sizeof(floatType) * N);
-  }
-  virtual void deallocateK() override { checkedFreeHost(k); }
-  virtual void allocateX() override {
-    checkedMallocHost(&x, sizeof(floatType) * N);
-  }
-  virtual void deallocateX() override { checkedFreeHost(x); }
-
   void synchronizeAllDevices();
   void synchronizeAllDevicesGatherStream();
   void recordGatherFinished();
