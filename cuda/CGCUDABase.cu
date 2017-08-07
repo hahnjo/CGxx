@@ -30,9 +30,9 @@ void CGCUDABase::allocateAndCopyMatrixDataCRS(
   checkedMalloc(&deviceMatrix.index, indexSize);
   checkedMalloc(&deviceMatrix.value, valueSize);
 
-  checkedMemcpyAsyncToDevice(deviceMatrix.ptr, data.ptr, ptrSize);
-  checkedMemcpyAsyncToDevice(deviceMatrix.index, data.index, indexSize);
-  checkedMemcpyAsyncToDevice(deviceMatrix.value, data.value, valueSize);
+  checkedMemcpyToDevice(deviceMatrix.ptr, data.ptr, ptrSize);
+  checkedMemcpyToDevice(deviceMatrix.index, data.index, indexSize);
+  checkedMemcpyToDevice(deviceMatrix.value, data.value, valueSize);
 }
 
 void CGCUDABase::allocateAndCopyMatrixDataELL(
@@ -47,9 +47,9 @@ void CGCUDABase::allocateAndCopyMatrixDataELL(
   checkedMalloc(&deviceMatrix.index, indexSize);
   checkedMalloc(&deviceMatrix.data, dataSize);
 
-  checkedMemcpyAsyncToDevice(deviceMatrix.length, data.length, lengthSize);
-  checkedMemcpyAsyncToDevice(deviceMatrix.index, data.index, indexSize);
-  checkedMemcpyAsyncToDevice(deviceMatrix.data, data.data, dataSize);
+  checkedMemcpyToDevice(deviceMatrix.length, data.length, lengthSize);
+  checkedMemcpyToDevice(deviceMatrix.index, data.index, indexSize);
+  checkedMemcpyToDevice(deviceMatrix.data, data.data, dataSize);
 }
 
 void CGCUDABase::freeMatrixCRSDevice(

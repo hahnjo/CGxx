@@ -34,42 +34,6 @@ class CGMultiCUDA : public CGCUDABase {
     GatherImplP2P,
   };
 
-  struct SplitMatrixCRSCUDA : SplitMatrixCRS {
-    SplitMatrixCRSCUDA(const MatrixCOO &coo, const WorkDistribution &wd)
-        : SplitMatrixCRS(coo, wd) {}
-
-    virtual void allocateData(int numberOfChunks) override {
-      data.reset((MatrixDataCRS *)new MatrixDataCRSCUDA[numberOfChunks]);
-    }
-  };
-  struct SplitMatrixELLCUDA : SplitMatrixELL {
-    SplitMatrixELLCUDA(const MatrixCOO &coo, const WorkDistribution &wd)
-        : SplitMatrixELL(coo, wd) {}
-
-    virtual void allocateData(int numberOfChunks) override {
-      data.reset((MatrixDataELL *)new MatrixDataELLCUDA[numberOfChunks]);
-    }
-  };
-
-  struct PartitionedMatrixCRSCUDA : PartitionedMatrixCRS {
-    PartitionedMatrixCRSCUDA(const MatrixCOO &coo, const WorkDistribution &wd)
-        : PartitionedMatrixCRS(coo, wd) {}
-
-    virtual void allocateDiagAndMinor(int numberOfChunks) override {
-      diag.reset((MatrixDataCRS *)new MatrixDataCRSCUDA[numberOfChunks]);
-      minor.reset((MatrixDataCRS *)new MatrixDataCRSCUDA[numberOfChunks]);
-    }
-  };
-  struct PartitionedMatrixELLCUDA : PartitionedMatrixELL {
-    PartitionedMatrixELLCUDA(const MatrixCOO &coo, const WorkDistribution &wd)
-        : PartitionedMatrixELL(coo, wd) {}
-
-    virtual void allocateDiagAndMinor(int numberOfChunks) override {
-      diag.reset((MatrixDataELL *)new MatrixDataELLCUDA[numberOfChunks]);
-      minor.reset((MatrixDataELL *)new MatrixDataELLCUDA[numberOfChunks]);
-    }
-  };
-
   struct MultiDevice : Device {
     int id;
     CGMultiCUDA *cg;
@@ -128,21 +92,6 @@ class CGMultiCUDA : public CGCUDABase {
 
   virtual void parseEnvironment() override;
   virtual void init(const char *matrixFile) override;
-
-  virtual void convertToSplitMatrixCRS() override {
-    splitMatrixCRS.reset(new SplitMatrixCRSCUDA(*matrixCOO, *workDistribution));
-  }
-  virtual void convertToSplitMatrixELL() override {
-    splitMatrixELL.reset(new SplitMatrixELLCUDA(*matrixCOO, *workDistribution));
-  }
-  virtual void convertToPartitionedMatrixCRS() override {
-    partitionedMatrixCRS.reset(
-        new PartitionedMatrixCRSCUDA(*matrixCOO, *workDistribution));
-  }
-  virtual void convertToPartitionedMatrixELL() override {
-    partitionedMatrixELL.reset(
-        new PartitionedMatrixELLCUDA(*matrixCOO, *workDistribution));
-  }
 
   void synchronizeAllDevices();
   void synchronizeAllDevicesGatherStream();
@@ -294,8 +243,8 @@ void CGMultiCUDA::doTransferTo() {
     size_t vectorSize = sizeof(floatType) * length;
     checkedMalloc(&device.k, vectorSize);
     checkedMalloc(&device.x, fullVectorSize);
-    checkedMemcpyAsyncToDevice(device.k, k + offset, vectorSize);
-    checkedMemcpyAsyncToDevice(device.x, x, fullVectorSize);
+    checkedMemcpyToDevice(device.k, k + offset, vectorSize);
+    checkedMemcpyToDevice(device.x, x, fullVectorSize);
 
     checkedMalloc(&device.p, fullVectorSize);
     checkedMalloc(&device.q, vectorSize);
@@ -333,8 +282,7 @@ void CGMultiCUDA::doTransferTo() {
       switch (preconditioner) {
       case PreconditionerJacobi:
         checkedMalloc(&device.jacobi.C, vectorSize);
-        checkedMemcpyAsyncToDevice(device.jacobi.C, jacobi->C + offset,
-                                   vectorSize);
+        checkedMemcpyToDevice(device.jacobi.C, jacobi->C + offset, vectorSize);
         break;
       default:
         assert(0 && "Invalid preconditioner!");
@@ -356,8 +304,8 @@ void CGMultiCUDA::doTransferFrom() {
     int offset = workDistribution->offsets[d];
     int length = workDistribution->lengths[d];
 
-    checkedMemcpyAsync(x + offset, device.x + offset,
-                       sizeof(floatType) * length, cudaMemcpyDeviceToHost);
+    checkedMemcpy(x + offset, device.x + offset, sizeof(floatType) * length,
+                  cudaMemcpyDeviceToHost);
 
     checkedFree(device.k);
     checkedFree(device.x);
@@ -457,9 +405,8 @@ void CGMultiCUDA::matvecGatherXViaHost(Vector _x) {
       int offset = workDistribution->offsets[src.id];
       int length = workDistribution->lengths[src.id];
 
-      checkedMemcpyAsyncToDevice(x + offset, xHost + offset,
-                                 sizeof(floatType) * length,
-                                 device.gatherStream);
+      checkedMemcpyAsync(x + offset, xHost + offset, sizeof(floatType) * length,
+                         cudaMemcpyHostToDevice, device.gatherStream);
     }
   }
   if (!overlappedGather) {
@@ -641,9 +588,6 @@ floatType CGMultiCUDA::vectorDotKernel(Vector _a, Vector _b) {
     deviceReduceKernel<<<1, Device::MaxBlocks, sharedForReduce>>>(
         device.tmp, device.tmp, device.blocks);
     checkLastError();
-
-    checkedMemcpyAsync(&device.vectorDotResult, device.tmp, sizeof(floatType),
-                       cudaMemcpyDeviceToHost);
   }
 
   // Synchronize devices and reduce partial results.
@@ -651,6 +595,10 @@ floatType CGMultiCUDA::vectorDotKernel(Vector _a, Vector _b) {
   for (MultiDevice &device : devices) {
     device.setDevice();
     checkedSynchronize();
+    // We cannot queue this asynchronously in the previous loop because
+    // device.vectorDotResult is pageable memory!
+    checkedMemcpy(&device.vectorDotResult, device.tmp, sizeof(floatType),
+                  cudaMemcpyDeviceToHost);
     res += device.vectorDotResult;
   }
 

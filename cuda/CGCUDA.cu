@@ -26,23 +26,9 @@
 
 /// Class implementing parallel kernels with CUDA.
 class CGCUDA : public CGCUDABase {
-  struct MatrixCRSCUDA : MatrixCRS, MatrixDataCRSCUDA {
-    MatrixCRSCUDA(const MatrixCOO &coo) : MatrixCRS(coo) {}
-  };
-  struct MatrixELLCUDA : MatrixELL, MatrixDataELLCUDA {
-    MatrixELLCUDA(const MatrixCOO &coo) : MatrixELL(coo) {}
-  };
-
   Device device;
 
   virtual void init(const char *matrixFile) override;
-
-  virtual void convertToMatrixCRS() override {
-    matrixCRS.reset(new MatrixCRSCUDA(*matrixCOO));
-  }
-  virtual void convertToMatrixELL() override {
-    matrixELL.reset(new MatrixELLCUDA(*matrixCOO));
-  }
 
   virtual void doTransferTo() override;
   virtual void doTransferFrom() override;
