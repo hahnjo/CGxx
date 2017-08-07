@@ -48,8 +48,8 @@ MatrixCOO::MatrixCOO(const char *file) {
     std::transform(type.begin(), type.end(), type.begin(), ::tolower);
     std::transform(storage.begin(), storage.end(), storage.begin(), ::tolower);
 
-    if (banner != "\%\%MatrixMarket" || mtx != "matrix" ||
-        crd != "coordinate" || type != "real") {
+    if (banner != "%%MatrixMarket" || mtx != "matrix" || crd != "coordinate" ||
+        type != "real") {
       std::cerr << "Only supporting real matrices in coordinate format!"
                 << std::endl;
       std::exit(1);
