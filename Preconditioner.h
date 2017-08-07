@@ -30,9 +30,7 @@ struct Jacobi {
   floatType *C;
 
   /// Initialize object with \a coo for an efficient %Jacobi preconditioner.
-  Jacobi(const MatrixCOO &coo);
-
-  ~Jacobi() { deallocateC(); }
+  void init(const MatrixCOO &coo);
 
   /// Allocate #C.
   virtual void allocateC(int N) { C = new floatType[N]; }

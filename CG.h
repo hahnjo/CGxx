@@ -204,35 +204,29 @@ protected:
   /// with some computation of matvec().
   virtual bool supportsOverlappedGather() { return false; }
 
-  /// Convert to MatrixCRS.
-  virtual void convertToMatrixCRS() {
-    matrixCRS.reset(new MatrixCRS(*matrixCOO));
+  /// Allocate MatrixCRS.
+  virtual void allocateMatrixCRS() { matrixCRS.reset(new MatrixCRS); }
+  /// Allocate MatrixELL.
+  virtual void allocateMatrixELL() { matrixELL.reset(new MatrixELL); }
+  /// Allocate SplitMatrixCRS.
+  virtual void allocateSplitMatrixCRS() {
+    splitMatrixCRS.reset(new SplitMatrixCRS);
   }
-  /// Convert to MatrixELL.
-  virtual void convertToMatrixELL() {
-    matrixELL.reset(new MatrixELL(*matrixCOO));
+  /// Allocate SplitMatrixELL.
+  virtual void allocateSplitMatrixELL() {
+    splitMatrixELL.reset(new SplitMatrixELL);
   }
-  /// Convert to SplitMatrixCRS.
-  virtual void convertToSplitMatrixCRS() {
-    splitMatrixCRS.reset(new SplitMatrixCRS(*matrixCOO, *workDistribution));
+  /// Allocate PartitionedMatrixCRS.
+  virtual void allocatePartitionedMatrixCRS() {
+    partitionedMatrixCRS.reset(new PartitionedMatrixCRS);
   }
-  /// Convert to SplitMatrixELL.
-  virtual void convertToSplitMatrixELL() {
-    splitMatrixELL.reset(new SplitMatrixELL(*matrixCOO, *workDistribution));
-  }
-  /// Convert to PartitionedMatrixCRS.
-  virtual void convertToPartitionedMatrixCRS() {
-    partitionedMatrixCRS.reset(
-        new PartitionedMatrixCRS(*matrixCOO, *workDistribution));
-  }
-  /// Convert to PartitionedMatrixELL.
-  virtual void convertToPartitionedMatrixELL() {
-    partitionedMatrixELL.reset(
-        new PartitionedMatrixELL(*matrixCOO, *workDistribution));
+  /// Allocate PartitionedMatrixELL.
+  virtual void allocatePartitionedMatrixELL() {
+    partitionedMatrixELL.reset(new PartitionedMatrixELL);
   }
 
   /// Initialize the Jacobi preconditioner.
-  virtual void initJacobi() { jacobi.reset(new Jacobi(*matrixCOO)); }
+  virtual void allocateJacobi() { jacobi.reset(new Jacobi); }
 
   /// Allocate #k.
   virtual void allocateK() { k = new floatType[N]; }
@@ -300,6 +294,17 @@ public:
     // Uses virtual methods and therefore cannot be done in destructor.
     deallocateK();
     deallocateX();
+
+    if (matrixCRS) {
+      matrixCRS->deallocate();
+    }
+    if (matrixELL) {
+      matrixELL->deallocate();
+    }
+
+    if (jacobi) {
+      jacobi->deallocateC();
+    }
   }
 
   /// @return new instance of a CG implementation.

@@ -69,11 +69,6 @@ struct MatrixDataCRS {
   /// Values in the matrix.
   floatType *value;
 
-  ~MatrixDataCRS() {
-    deallocatePtr();
-    deallocateIndexAndValue();
-  }
-
   /// Allocate #ptr.
   virtual void allocatePtr(int rows) { ptr = new int[rows + 1]; }
   /// Deallocate #ptr.
@@ -87,6 +82,11 @@ struct MatrixDataCRS {
   virtual void deallocateIndexAndValue() {
     delete[] index;
     delete[] value;
+  }
+
+  void deallocate() {
+    deallocatePtr();
+    deallocateIndexAndValue();
   }
 };
 
@@ -105,11 +105,6 @@ struct MatrixDataELL {
   /// Data in the matrix.
   floatType *data;
 
-  ~MatrixDataELL() {
-    deallocateLength();
-    deallocateIndexAndData();
-  }
-
   /// Allocate #length.
   virtual void allocateLength(int rows) { length = new int[rows]; }
   /// Deallocate #length.
@@ -124,29 +119,41 @@ struct MatrixDataELL {
     delete[] index;
     delete[] data;
   }
+
+  void deallocate() {
+    deallocateLength();
+    deallocateIndexAndData();
+  }
 };
 
 /// %Matrix with specified data.
 template <class Data> struct DataMatrix : Matrix, Data {
-  DataMatrix() = delete;
   /// Convert \a coo.
-  DataMatrix(const MatrixCOO &coo);
+  void convert(const MatrixCOO &coo);
 };
 using MatrixCRS = DataMatrix<MatrixDataCRS>;
 using MatrixELL = DataMatrix<MatrixDataELL>;
 
 /// %Matrix split for a WorkDistribution.
 template <class Data> struct SplitMatrix : Matrix {
+  /// Number of chunks in this matrix.
+  int numberOfChunks;
+
   /// Data for each chunk of the WorkDistribution.
   std::unique_ptr<Data[]> data;
 
-  SplitMatrix() = delete;
   /// Convert \a coo and split based on \a wd.
-  SplitMatrix(const MatrixCOO &coo, const WorkDistribution &wd);
+  void convert(const MatrixCOO &coo, const WorkDistribution &wd);
 
   /// Allocate #data.
-  virtual void allocateData(int numberOfChunks) {
-    data.reset(new Data[numberOfChunks]);
+  virtual void allocateData() { data.reset(new Data[numberOfChunks]); }
+
+  ~SplitMatrix() {
+    if (data) {
+      for (int i = 0; i < numberOfChunks; i++) {
+        data[i].deallocate();
+      }
+    }
   }
 };
 using SplitMatrixCRS = SplitMatrix<MatrixDataCRS>;
@@ -154,20 +161,36 @@ using SplitMatrixELL = SplitMatrix<MatrixDataELL>;
 
 /// %Matrix partitioned for a WorkDistribution.
 template <class Data> struct PartitionedMatrix : Matrix {
+  /// Number of chunks in this matrix.
+  int numberOfChunks;
+
   /// Data on the diagonal for each chunk of the WorkDistribution.
   std::unique_ptr<Data[]> diag;
 
   /// Data NOT on the diagonal for each chunk of the WorkDistribution.
   std::unique_ptr<Data[]> minor;
 
-  PartitionedMatrix() = delete;
   /// Convert \a coo and partition based on \a wd.
-  PartitionedMatrix(const MatrixCOO &coo, const WorkDistribution &wd);
+  void convert(const MatrixCOO &coo, const WorkDistribution &wd);
 
   /// Allocate #diag and #minor.
-  virtual void allocateDiagAndMinor(int numberOfChunks) {
+  virtual void allocateDiagAndMinor() {
     diag.reset(new Data[numberOfChunks]);
     minor.reset(new Data[numberOfChunks]);
+  }
+
+  ~PartitionedMatrix() {
+    if (diag) {
+      for (int i = 0; i < numberOfChunks; i++) {
+        diag[i].deallocate();
+      }
+    }
+
+    if (minor) {
+      for (int i = 0; i < numberOfChunks; i++) {
+        minor[i].deallocate();
+      }
+    }
   }
 };
 using PartitionedMatrixCRS = PartitionedMatrix<MatrixDataCRS>;

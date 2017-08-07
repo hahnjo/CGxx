@@ -19,7 +19,7 @@
 #include "Preconditioner.h"
 #include "Matrix.h"
 
-Jacobi::Jacobi(const MatrixCOO &coo) {
+void Jacobi::init(const MatrixCOO &coo) {
   allocateC(coo.N);
 
   for (int i = 0; i < coo.nz; i++) {

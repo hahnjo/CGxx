@@ -155,7 +155,7 @@ void MatrixCOO::countNz(const WorkDistribution &wd,
   }
 }
 
-template <> DataMatrix<MatrixDataCRS>::DataMatrix(const MatrixCOO &coo) {
+template <> void DataMatrix<MatrixDataCRS>::convert(const MatrixCOO &coo) {
   N = coo.N;
   nz = coo.nz;
 
@@ -183,17 +183,19 @@ template <> DataMatrix<MatrixDataCRS>::DataMatrix(const MatrixCOO &coo) {
 }
 
 template <>
-SplitMatrix<MatrixDataCRS>::SplitMatrix(const MatrixCOO &coo,
-                                        const WorkDistribution &wd) {
+void SplitMatrix<MatrixDataCRS>::convert(const MatrixCOO &coo,
+                                         const WorkDistribution &wd) {
   N = coo.N;
   nz = coo.nz;
-  allocateData(wd.numberOfChunks);
+  numberOfChunks = wd.numberOfChunks;
+
+  allocateData();
 
   // Temporary memory to store current offset in index / value per row.
   std::unique_ptr<int[]> offsets(new int[N]);
 
   // Construct ptr and initial values for offsets for each chunk.
-  for (int c = 0; c < wd.numberOfChunks; c++) {
+  for (int c = 0; c < numberOfChunks; c++) {
     int offset = wd.offsets[c];
     int length = wd.lengths[c];
 
@@ -207,7 +209,7 @@ SplitMatrix<MatrixDataCRS>::SplitMatrix(const MatrixCOO &coo,
   }
 
   // Allocate index and value for each chunk.
-  for (int c = 0; c < wd.numberOfChunks; c++) {
+  for (int c = 0; c < numberOfChunks; c++) {
     int length = wd.lengths[c];
     int values = data[c].ptr[length];
     data[c].allocateIndexAndValue(values);
@@ -225,11 +227,13 @@ SplitMatrix<MatrixDataCRS>::SplitMatrix(const MatrixCOO &coo,
 }
 
 template <>
-PartitionedMatrix<MatrixDataCRS>::PartitionedMatrix(
-    const MatrixCOO &coo, const WorkDistribution &wd) {
+void PartitionedMatrix<MatrixDataCRS>::convert(const MatrixCOO &coo,
+                                               const WorkDistribution &wd) {
   N = coo.N;
   nz = coo.nz;
-  allocateDiagAndMinor(wd.numberOfChunks);
+  numberOfChunks = wd.numberOfChunks;
+
+  allocateDiagAndMinor();
 
   // Temporary memory to count nonzeros per row.
   std::unique_ptr<int[]> nzDiag, nzMinor;
@@ -240,7 +244,7 @@ PartitionedMatrix<MatrixDataCRS>::PartitionedMatrix(
   std::unique_ptr<int[]> offsetsMinor(new int[N]);
 
   // Construct ptr and initial values for offsets for each chunk.
-  for (int c = 0; c < wd.numberOfChunks; c++) {
+  for (int c = 0; c < numberOfChunks; c++) {
     int offset = wd.offsets[c];
     int length = wd.lengths[c];
 
@@ -260,7 +264,7 @@ PartitionedMatrix<MatrixDataCRS>::PartitionedMatrix(
   }
 
   // Allocate index and value for each chunk.
-  for (int c = 0; c < wd.numberOfChunks; c++) {
+  for (int c = 0; c < numberOfChunks; c++) {
     int length = wd.lengths[c];
     int valuesDiag = diag[c].ptr[length];
     int valuesMinor = diag[c].ptr[length];
@@ -287,7 +291,7 @@ PartitionedMatrix<MatrixDataCRS>::PartitionedMatrix(
   }
 }
 
-template <> DataMatrix<MatrixDataELL>::DataMatrix(const MatrixCOO &coo) {
+template <> void DataMatrix<MatrixDataELL>::convert(const MatrixCOO &coo) {
   N = coo.N;
   nz = coo.nz;
   elements = N * coo.getMaxNz();
@@ -312,14 +316,16 @@ template <> DataMatrix<MatrixDataELL>::DataMatrix(const MatrixCOO &coo) {
 }
 
 template <>
-SplitMatrix<MatrixDataELL>::SplitMatrix(const MatrixCOO &coo,
-                                        const WorkDistribution &wd) {
+void SplitMatrix<MatrixDataELL>::convert(const MatrixCOO &coo,
+                                         const WorkDistribution &wd) {
   N = coo.N;
   nz = coo.nz;
-  allocateData(wd.numberOfChunks);
+  numberOfChunks = wd.numberOfChunks;
+
+  allocateData();
 
   // Allocate length for each chunk.
-  for (int c = 0; c < wd.numberOfChunks; c++) {
+  for (int c = 0; c < numberOfChunks; c++) {
     int offset = wd.offsets[c];
     int length = wd.lengths[c];
     int maxNz = coo.getMaxNz(offset, offset + length);
@@ -350,18 +356,20 @@ SplitMatrix<MatrixDataELL>::SplitMatrix(const MatrixCOO &coo,
 }
 
 template <>
-PartitionedMatrix<MatrixDataELL>::PartitionedMatrix(
-    const MatrixCOO &coo, const WorkDistribution &wd) {
+void PartitionedMatrix<MatrixDataELL>::convert(const MatrixCOO &coo,
+                                               const WorkDistribution &wd) {
   N = coo.N;
   nz = coo.nz;
-  allocateDiagAndMinor(wd.numberOfChunks);
+  numberOfChunks = wd.numberOfChunks;
+
+  allocateDiagAndMinor();
 
   // Temporary memory to count nonzeros per row.
   std::unique_ptr<int[]> nzDiag, nzMinor;
   coo.countNz(wd, nzDiag, nzMinor);
 
   // Allocate length for each chunk.
-  for (int c = 0; c < wd.numberOfChunks; c++) {
+  for (int c = 0; c < numberOfChunks; c++) {
     int offset = wd.offsets[c];
     int length = wd.lengths[c];
     int maxNzDiag = 0, maxNzMinor = 0;

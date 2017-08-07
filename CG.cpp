@@ -185,29 +185,35 @@ void CG::init(const char *matrixFile) {
   case MatrixFormatCRS:
     if (numberOfChunks == -1) {
       std::cout << "Converting matrix to CRS format..." << std::endl;
-      convertToMatrixCRS();
+      allocateMatrixCRS();
+      matrixCRS->convert(*matrixCOO);
     } else if (!overlappedGather) {
       std::cout << "Converting and splitting matrix in CRS format..."
                 << std::endl;
-      convertToSplitMatrixCRS();
+      allocateSplitMatrixCRS();
+      splitMatrixCRS->convert(*matrixCOO, *workDistribution);
     } else {
       std::cout << "Converting and partitioning matrix in CRS format..."
                 << std::endl;
-      convertToPartitionedMatrixCRS();
+      allocatePartitionedMatrixCRS();
+      partitionedMatrixCRS->convert(*matrixCOO, *workDistribution);
     }
     break;
   case MatrixFormatELL:
     if (numberOfChunks == -1) {
       std::cout << "Converting matrix to ELL format..." << std::endl;
-      convertToMatrixELL();
+      allocateMatrixELL();
+      matrixELL->convert(*matrixCOO);
     } else if (!overlappedGather) {
       std::cout << "Converting and splitting matrix in ELL format..."
                 << std::endl;
-      convertToSplitMatrixELL();
+      allocateSplitMatrixELL();
+      splitMatrixELL->convert(*matrixCOO, *workDistribution);
     } else {
       std::cout << "Converting and partitioning matrix in ELL format..."
                 << std::endl;
-      convertToPartitionedMatrixELL();
+      allocatePartitionedMatrixELL();
+      partitionedMatrixELL->convert(*matrixCOO, *workDistribution);
     }
     break;
   }
@@ -218,7 +224,8 @@ void CG::init(const char *matrixFile) {
     break;
   case PreconditionerJacobi:
     std::cout << "Initializing Jacobi preconditioner..." << std::endl;
-    initJacobi();
+    allocateJacobi();
+    jacobi->init(*matrixCOO);
     break;
   }
 
