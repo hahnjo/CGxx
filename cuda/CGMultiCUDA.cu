@@ -19,6 +19,7 @@
 #include <algorithm>
 #include <cassert>
 #include <iostream>
+#include <thread>
 #include <vector>
 
 #include "../CG.h"
@@ -97,6 +98,7 @@ class CGMultiCUDA : public CGCUDABase {
   void synchronizeAllDevicesGatherStream();
   void recordGatherFinished();
 
+  void doTransferToForDevice(int index);
   virtual void doTransferTo() override;
   virtual void doTransferFrom() override;
 
@@ -229,70 +231,82 @@ void CGMultiCUDA::recordGatherFinished() {
   }
 }
 
-void CGMultiCUDA::doTransferTo() {
+void CGMultiCUDA::doTransferToForDevice(int index) {
   size_t fullVectorSize = sizeof(floatType) * N;
 
-  // Allocate memory on all devices and transfer necessary data.
-  for (MultiDevice &device : devices) {
-    device.setDevice();
+  MultiDevice &device = devices[index];
+  device.setDevice();
 
-    int d = device.id;
-    int offset = workDistribution->offsets[d];
-    int length = workDistribution->lengths[d];
+  int d = device.id;
+  int offset = workDistribution->offsets[d];
+  int length = workDistribution->lengths[d];
 
-    size_t vectorSize = sizeof(floatType) * length;
-    checkedMalloc(&device.k, vectorSize);
-    checkedMalloc(&device.x, fullVectorSize);
-    checkedMemcpyToDevice(device.k, k + offset, vectorSize);
-    checkedMemcpyToDevice(device.x, x, fullVectorSize);
+  size_t vectorSize = sizeof(floatType) * length;
+  checkedMalloc(&device.k, vectorSize);
+  checkedMalloc(&device.x, fullVectorSize);
+  checkedMemcpyToDevice(device.k, k + offset, vectorSize);
+  checkedMemcpyToDevice(device.x, x, fullVectorSize);
 
-    checkedMalloc(&device.p, fullVectorSize);
-    checkedMalloc(&device.q, vectorSize);
-    checkedMalloc(&device.r, vectorSize);
+  checkedMalloc(&device.p, fullVectorSize);
+  checkedMalloc(&device.q, vectorSize);
+  checkedMalloc(&device.r, vectorSize);
 
-    switch (matrixFormat) {
-    case MatrixFormatCRS:
-      if (!overlappedGather) {
-        allocateAndCopyMatrixDataCRS(length, splitMatrixCRS->data[d],
-                                     device.matrixCRS);
-      } else {
-        allocateAndCopyMatrixDataCRS(length, partitionedMatrixCRS->diag[d],
-                                     device.diagMatrixCRS);
-        allocateAndCopyMatrixDataCRS(length, partitionedMatrixCRS->minor[d],
-                                     device.matrixCRS);
-      }
-      break;
-    case MatrixFormatELL:
-      if (!overlappedGather) {
-        allocateAndCopyMatrixDataELL(length, splitMatrixELL->data[d],
-                                     device.matrixELL);
-      } else {
-        allocateAndCopyMatrixDataELL(length, partitionedMatrixELL->diag[d],
-                                     device.diagMatrixELL);
-        allocateAndCopyMatrixDataELL(length, partitionedMatrixELL->minor[d],
-                                     device.matrixELL);
-      }
+  switch (matrixFormat) {
+  case MatrixFormatCRS:
+    if (!overlappedGather) {
+      allocateAndCopyMatrixDataCRS(length, splitMatrixCRS->data[d],
+                                   device.matrixCRS);
+    } else {
+      allocateAndCopyMatrixDataCRS(length, partitionedMatrixCRS->diag[d],
+                                   device.diagMatrixCRS);
+      allocateAndCopyMatrixDataCRS(length, partitionedMatrixCRS->minor[d],
+                                   device.matrixCRS);
+    }
+    break;
+  case MatrixFormatELL:
+    if (!overlappedGather) {
+      allocateAndCopyMatrixDataELL(length, splitMatrixELL->data[d],
+                                   device.matrixELL);
+    } else {
+      allocateAndCopyMatrixDataELL(length, partitionedMatrixELL->diag[d],
+                                   device.diagMatrixELL);
+      allocateAndCopyMatrixDataELL(length, partitionedMatrixELL->minor[d],
+                                   device.matrixELL);
+    }
+    break;
+  default:
+    assert(0 && "Invalid matrix format!");
+  }
+  if (preconditioner != PreconditionerNone) {
+    checkedMalloc(&device.z, vectorSize);
+
+    switch (preconditioner) {
+    case PreconditionerJacobi:
+      checkedMalloc(&device.jacobi.C, vectorSize);
+      checkedMemcpyToDevice(device.jacobi.C, jacobi->C + offset, vectorSize);
       break;
     default:
-      assert(0 && "Invalid matrix format!");
+      assert(0 && "Invalid preconditioner!");
     }
-    if (preconditioner != PreconditionerNone) {
-      checkedMalloc(&device.z, vectorSize);
-
-      switch (preconditioner) {
-      case PreconditionerJacobi:
-        checkedMalloc(&device.jacobi.C, vectorSize);
-        checkedMemcpyToDevice(device.jacobi.C, jacobi->C + offset, vectorSize);
-        break;
-      default:
-        assert(0 && "Invalid preconditioner!");
-      }
-    }
-
-    checkedMalloc(&device.tmp, sizeof(floatType) * Device::MaxBlocks);
   }
 
-  synchronizeAllDevices();
+  checkedMalloc(&device.tmp, sizeof(floatType) * Device::MaxBlocks);
+}
+
+void CGMultiCUDA::doTransferTo() {
+  int numDevices = getNumberOfChunks();
+  std::thread *threads = new std::thread[numDevices];
+
+  // Allocate memory on all devices and transfer necessary data.
+  for (int i = 0; i < numDevices; i++) {
+    threads[i] = std::thread(&CGMultiCUDA::doTransferToForDevice, this, i);
+  }
+
+  // Synchronize started threads.
+  for (int i = 0; i < numDevices; i++) {
+    threads[i].join();
+  }
+  delete[] threads;
 }
 
 void CGMultiCUDA::doTransferFrom() {
