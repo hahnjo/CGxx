@@ -205,37 +205,29 @@ protected:
   virtual bool supportsOverlappedGather() { return false; }
 
   /// Allocate MatrixCRS.
-  virtual void allocateMatrixCRS() { matrixCRS.reset(new MatrixCRS); }
+  virtual void allocateMatrixCRS();
   /// Allocate MatrixELL.
-  virtual void allocateMatrixELL() { matrixELL.reset(new MatrixELL); }
+  virtual void allocateMatrixELL();
   /// Allocate SplitMatrixCRS.
-  virtual void allocateSplitMatrixCRS() {
-    splitMatrixCRS.reset(new SplitMatrixCRS);
-  }
+  virtual void allocateSplitMatrixCRS();
   /// Allocate SplitMatrixELL.
-  virtual void allocateSplitMatrixELL() {
-    splitMatrixELL.reset(new SplitMatrixELL);
-  }
+  virtual void allocateSplitMatrixELL();
   /// Allocate PartitionedMatrixCRS.
-  virtual void allocatePartitionedMatrixCRS() {
-    partitionedMatrixCRS.reset(new PartitionedMatrixCRS);
-  }
+  virtual void allocatePartitionedMatrixCRS();
   /// Allocate PartitionedMatrixELL.
-  virtual void allocatePartitionedMatrixELL() {
-    partitionedMatrixELL.reset(new PartitionedMatrixELL);
-  }
+  virtual void allocatePartitionedMatrixELL();
 
   /// Initialize the Jacobi preconditioner.
-  virtual void allocateJacobi() { jacobi.reset(new Jacobi); }
+  virtual void allocateJacobi();
 
   /// Allocate #k.
-  virtual void allocateK() { k = new floatType[N]; }
+  virtual void allocateK();
   /// Deallocate #k.
-  virtual void deallocateK() { delete[] k; }
+  virtual void deallocateK();
   /// Allocate #x.
-  virtual void allocateX() { x = new floatType[N]; }
+  virtual void allocateX();
   /// Deallocate #x.
-  virtual void deallocateX() { delete[] x; }
+  virtual void deallocateX();
 
   /// Do transfer data before calling #solve().
   virtual void doTransferTo() {}
@@ -290,22 +282,7 @@ public:
   virtual void printSummary();
 
   /// Cleanup allocated memory.
-  virtual void cleanup() {
-    // Uses virtual methods and therefore cannot be done in destructor.
-    deallocateK();
-    deallocateX();
-
-    if (matrixCRS) {
-      matrixCRS->deallocate();
-    }
-    if (matrixELL) {
-      matrixELL->deallocate();
-    }
-
-    if (jacobi) {
-      jacobi->deallocateC();
-    }
-  }
+  virtual void cleanup();
 
   /// @return new instance of a CG implementation.
   static CG *getInstance();

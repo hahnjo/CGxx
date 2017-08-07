@@ -33,9 +33,9 @@ struct Jacobi {
   void init(const MatrixCOO &coo);
 
   /// Allocate #C.
-  virtual void allocateC(int N) { C = new floatType[N]; }
+  virtual void allocateC(int N);
   /// Deallocate #C.
-  virtual void deallocateC() { delete[] C; }
+  virtual void deallocateC();
 };
 
 #endif

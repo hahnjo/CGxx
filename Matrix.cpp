@@ -155,6 +155,67 @@ void MatrixCOO::countNz(const WorkDistribution &wd,
   }
 }
 
+// -----------------------------------------------------------------------------
+// The functions for allocation and deallocation cannot live in the header file:
+// Otherwise, they are included from openacc/ which makes the PGI compiler use
+// page-locked memory for the matrix. That would decrease overall performance.
+
+void MatrixDataCRS::allocatePtr(int rows) { ptr = new int[rows + 1]; }
+void MatrixDataCRS::deallocatePtr() { delete[] ptr; }
+void MatrixDataCRS::allocateIndexAndValue(int values) {
+  index = new int[values];
+  value = new floatType[values];
+}
+void MatrixDataCRS::deallocateIndexAndValue() {
+  delete[] index;
+  delete[] value;
+}
+
+void MatrixDataELL::allocateLength(int rows) { length = new int[rows]; }
+void MatrixDataELL::deallocateLength() { delete[] length; }
+void MatrixDataELL::allocateIndexAndData() {
+  index = new int[elements];
+  data = new floatType[elements];
+}
+void MatrixDataELL::deallocateIndexAndData() {
+  delete[] index;
+  delete[] data;
+}
+
+template <class Data> void SplitMatrix<Data>::allocateData() {
+  data.reset(new Data[numberOfChunks]);
+}
+
+template <class Data> SplitMatrix<Data>::~SplitMatrix() {
+  if (data) {
+    for (int i = 0; i < numberOfChunks; i++) {
+      data[i].deallocate();
+    }
+  }
+}
+
+template <class Data> void PartitionedMatrix<Data>::allocateDiagAndMinor() {
+  diag.reset(new Data[numberOfChunks]);
+  minor.reset(new Data[numberOfChunks]);
+}
+
+template <class Data> PartitionedMatrix<Data>::~PartitionedMatrix() {
+  if (diag) {
+    for (int i = 0; i < numberOfChunks; i++) {
+      diag[i].deallocate();
+    }
+  }
+
+  if (minor) {
+    for (int i = 0; i < numberOfChunks; i++) {
+      minor[i].deallocate();
+    }
+  }
+}
+
+// -----------------------------------------------------------------------------
+// Conversion to CRS and ELLPACK format.
+
 template <> void DataMatrix<MatrixDataCRS>::convert(const MatrixCOO &coo) {
   N = coo.N;
   nz = coo.nz;
@@ -419,3 +480,9 @@ void PartitionedMatrix<MatrixDataELL>::convert(const MatrixCOO &coo,
     }
   }
 }
+
+// Instantiate templates:
+template struct SplitMatrix<MatrixDataCRS>;
+template struct SplitMatrix<MatrixDataELL>;
+template struct PartitionedMatrix<MatrixDataCRS>;
+template struct PartitionedMatrix<MatrixDataELL>;

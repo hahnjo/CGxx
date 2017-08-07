@@ -70,19 +70,13 @@ struct MatrixDataCRS {
   floatType *value;
 
   /// Allocate #ptr.
-  virtual void allocatePtr(int rows) { ptr = new int[rows + 1]; }
+  virtual void allocatePtr(int rows);
   /// Deallocate #ptr.
-  virtual void deallocatePtr() { delete[] ptr; }
+  virtual void deallocatePtr();
   /// Allocate #index and #value.
-  virtual void allocateIndexAndValue(int values) {
-    index = new int[values];
-    value = new floatType[values];
-  }
+  virtual void allocateIndexAndValue(int values);
   /// Deallocate #index and #value.
-  virtual void deallocateIndexAndValue() {
-    delete[] index;
-    delete[] value;
-  }
+  virtual void deallocateIndexAndValue();
 
   void deallocate() {
     deallocatePtr();
@@ -106,19 +100,13 @@ struct MatrixDataELL {
   floatType *data;
 
   /// Allocate #length.
-  virtual void allocateLength(int rows) { length = new int[rows]; }
+  virtual void allocateLength(int rows);
   /// Deallocate #length.
-  virtual void deallocateLength() { delete[] length; }
+  virtual void deallocateLength();
   /// Allocate #index and #data.
-  virtual void allocateIndexAndData() {
-    index = new int[elements];
-    data = new floatType[elements];
-  }
+  virtual void allocateIndexAndData();
   /// Deallocate #index and #data.
-  virtual void deallocateIndexAndData() {
-    delete[] index;
-    delete[] data;
-  }
+  virtual void deallocateIndexAndData();
 
   void deallocate() {
     deallocateLength();
@@ -146,15 +134,9 @@ template <class Data> struct SplitMatrix : Matrix {
   void convert(const MatrixCOO &coo, const WorkDistribution &wd);
 
   /// Allocate #data.
-  virtual void allocateData() { data.reset(new Data[numberOfChunks]); }
+  virtual void allocateData();
 
-  ~SplitMatrix() {
-    if (data) {
-      for (int i = 0; i < numberOfChunks; i++) {
-        data[i].deallocate();
-      }
-    }
-  }
+  ~SplitMatrix();
 };
 using SplitMatrixCRS = SplitMatrix<MatrixDataCRS>;
 using SplitMatrixELL = SplitMatrix<MatrixDataELL>;
@@ -174,24 +156,9 @@ template <class Data> struct PartitionedMatrix : Matrix {
   void convert(const MatrixCOO &coo, const WorkDistribution &wd);
 
   /// Allocate #diag and #minor.
-  virtual void allocateDiagAndMinor() {
-    diag.reset(new Data[numberOfChunks]);
-    minor.reset(new Data[numberOfChunks]);
-  }
+  virtual void allocateDiagAndMinor();
 
-  ~PartitionedMatrix() {
-    if (diag) {
-      for (int i = 0; i < numberOfChunks; i++) {
-        diag[i].deallocate();
-      }
-    }
-
-    if (minor) {
-      for (int i = 0; i < numberOfChunks; i++) {
-        minor[i].deallocate();
-      }
-    }
-  }
+  ~PartitionedMatrix();
 };
 using PartitionedMatrixCRS = PartitionedMatrix<MatrixDataCRS>;
 using PartitionedMatrixELL = PartitionedMatrix<MatrixDataELL>;

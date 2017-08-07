@@ -19,6 +19,13 @@
 #include "Preconditioner.h"
 #include "Matrix.h"
 
+// The functions for allocation and deallocation cannot live in the header file:
+// Otherwise, they are included from openacc/ which makes the PGI compiler use
+// page-locked memory for the preconditioner. That would decrease performance.
+
+void Jacobi::allocateC(int N) { C = new floatType[N]; }
+void Jacobi::deallocateC() { delete[] C; }
+
 void Jacobi::init(const MatrixCOO &coo) {
   allocateC(coo.N);
 
