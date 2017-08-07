@@ -22,7 +22,6 @@
 #include <vector>
 
 #include "../CG.h"
-#include "clSVM.h"
 #include "utils.h"
 
 #define CL_USE_DEPRECATED_OPENCL_1_2_APIS
@@ -34,58 +33,6 @@ extern const char *source;
 /// Class implementing parallel kernels with OpenCL.
 class CGOpenCLBase : public CG {
 protected:
-#if OPENCL_USE_SVM
-  /// Derived struct for SVM memory.
-  struct MatrixDataCRSSVM : MatrixDataCRS {
-    CGOpenCLBase *cg;
-    MatrixDataCRSSVM() {}
-    MatrixDataCRSSVM(CGOpenCLBase *cg) : cg(cg) {}
-
-    virtual void allocatePtr(int rows) override {
-      ptr = (int *)cg->mallocSVM(sizeof(int) * (rows + 1));
-    }
-    virtual void deallocatePtr() override { cg->freeSVM(ptr); }
-    virtual void allocateIndexAndValue(int values) override {
-      index = (int *)cg->mallocSVM(sizeof(int) * values);
-      value = (floatType *)cg->mallocSVM(sizeof(floatType) * values);
-    }
-    virtual void deallocateIndexAndValue() override {
-      cg->freeSVM(index);
-      cg->freeSVM(value);
-    }
-  };
-  /// Derived struct for SVM memory.
-  struct MatrixDataELLSVM : MatrixDataELL {
-    CGOpenCLBase *cg;
-    MatrixDataELLSVM() {}
-    MatrixDataELLSVM(CGOpenCLBase *cg) : cg(cg) {}
-
-    virtual void allocateLength(int rows) override {
-      length = (int *)cg->mallocSVM(sizeof(int) * rows);
-    }
-    virtual void deallocateLength() override { cg->freeSVM(length); }
-    virtual void allocateIndexAndData() override {
-      index = (int *)cg->mallocSVM(sizeof(int) * elements);
-      data = (floatType *)cg->mallocSVM(sizeof(floatType) * elements);
-    }
-    virtual void deallocateIndexAndData() override {
-      cg->freeSVM(index);
-      cg->freeSVM(data);
-    }
-  };
-  /// Derived struct for SVM memory.
-  struct JacobiSVM : Jacobi {
-    CGOpenCLBase *cg;
-    /// @see Jacobi
-    JacobiSVM(const MatrixCOO &coo, CGOpenCLBase *cg) : Jacobi(coo), cg(cg) {}
-
-    virtual void allocateC(int N) override {
-      C = (floatType *)cg->mallocSVM(sizeof(floatType) * N);
-    }
-    virtual void deallocateC() override { cg->freeSVM(C); }
-  };
-#endif
-
   /// The OpenCL context.
   cl_context ctx = NULL;
 
@@ -170,7 +117,7 @@ protected:
     };
     /// MatrixDataELL on the device.
     MatrixELLDevice matrixELL;
-    /// Jacobi on the device.
+    /// JacobiCUDA on the device.
     struct {
       cl_mem C = NULL;
     } jacobi;
@@ -288,31 +235,9 @@ protected:
     return checkedCreateBufferWithFlags(CL_MEM_READ_ONLY, size);
   }
 
-#if OPENCL_USE_SVM
-  void *mallocSVM(size_t size) {
-    return clSVMAlloc(ctx, CL_MEM_READ_WRITE, size, /*alignment=*/0);
-  }
-  void freeSVM(void *svm_pointer) { clSVMFree(ctx, svm_pointer); }
-#endif
-
   virtual void init(const char *matrixFile) override;
 
   virtual bool needsTransfer() override { return true; }
-
-#if OPENCL_USE_SVM
-  virtual void initJacobi() override {
-    jacobi.reset(new JacobiSVM(*matrixCOO, this));
-  }
-
-  virtual void allocateK() override {
-    k = (floatType *)mallocSVM(sizeof(floatType) * N);
-  }
-  virtual void deallocateK() override { freeSVM(k); }
-  virtual void allocateX() override {
-    x = (floatType *)mallocSVM(sizeof(floatType) * N);
-  }
-  virtual void deallocateX() override { freeSVM(x); }
-#endif
 
   /// Allocate and copy \a data on the \a device.
   void allocateAndCopyMatrixDataCRS(int length, const MatrixDataCRS &data,

@@ -40,72 +40,6 @@ class CGMultiOpenCL : public CGOpenCLBase {
     GatherImplDevice,
   };
 
-#if OPENCL_USE_SVM
-  struct SplitMatrixCRSSVM : SplitMatrixCRS {
-    CGMultiOpenCL *cg;
-    SplitMatrixCRSSVM(const MatrixCOO &coo, const WorkDistribution &wd,
-                      CGMultiOpenCL *cg)
-        : SplitMatrixCRS(coo, wd), cg(cg) {}
-
-    virtual void allocateData(int numberOfChunks) override {
-      MatrixDataCRSSVM *alloc = new MatrixDataCRSSVM[numberOfChunks];
-      for (int i = 0; i < numberOfChunks; i++) {
-        alloc[i].cg = cg;
-      }
-      data.reset((MatrixDataCRS *)alloc);
-    }
-  };
-  struct SplitMatrixELLSVM : SplitMatrixELL {
-    CGMultiOpenCL *cg;
-    SplitMatrixELLSVM(const MatrixCOO &coo, const WorkDistribution &wd,
-                      CGMultiOpenCL *cg)
-        : SplitMatrixELL(coo, wd), cg(cg) {}
-
-    virtual void allocateData(int numberOfChunks) override {
-      MatrixDataELLSVM *alloc = new MatrixDataELLSVM[numberOfChunks];
-      for (int i = 0; i < numberOfChunks; i++) {
-        alloc[i].cg = cg;
-      }
-      data.reset((MatrixDataELL *)alloc);
-    }
-  };
-
-  struct PartitionedMatrixCRSSVM : PartitionedMatrixCRS {
-    CGMultiOpenCL *cg;
-    PartitionedMatrixCRSSVM(const MatrixCOO &coo, const WorkDistribution &wd,
-                            CGMultiOpenCL *cg)
-        : PartitionedMatrixCRS(coo, wd), cg(cg) {}
-
-    virtual void allocateDiagAndMinor(int numberOfChunks) override {
-      MatrixDataCRSSVM *allocDiag = new MatrixDataCRSSVM[numberOfChunks];
-      MatrixDataCRSSVM *allocMinor = new MatrixDataCRSSVM[numberOfChunks];
-      for (int i = 0; i < numberOfChunks; i++) {
-        allocDiag[i].cg = cg;
-        allocMinor[i].cg = cg;
-      }
-      diag.reset((MatrixDataCRS *)allocDiag);
-      minor.reset((MatrixDataCRS *)allocMinor);
-    }
-  };
-  struct PartitionedMatrixELLSVM : PartitionedMatrixELL {
-    CGMultiOpenCL *cg;
-    PartitionedMatrixELLSVM(const MatrixCOO &coo, const WorkDistribution &wd,
-                            CGMultiOpenCL *cg)
-        : PartitionedMatrixELL(coo, wd), cg(cg) {}
-
-    virtual void allocateDiagAndMinor(int numberOfChunks) override {
-      MatrixDataELLSVM *allocDiag = new MatrixDataELLSVM[numberOfChunks];
-      MatrixDataELLSVM *allocMinor = new MatrixDataELLSVM[numberOfChunks];
-      for (int i = 0; i < numberOfChunks; i++) {
-        allocDiag[i].cg = cg;
-        allocMinor[i].cg = cg;
-      }
-      diag.reset((MatrixDataELL *)allocDiag);
-      minor.reset((MatrixDataELL *)allocMinor);
-    }
-  };
-#endif
-
   struct MultiDevice : Device {
     int id;
     WorkDistribution *workDistribution;
@@ -150,25 +84,6 @@ class CGMultiOpenCL : public CGOpenCLBase {
   virtual void parseEnvironment() override;
   virtual void init(const char *matrixFile) override;
 
-#if OPENCL_USE_SVM
-  virtual void convertToSplitMatrixCRS() override {
-    splitMatrixCRS.reset(
-        new SplitMatrixCRSSVM(*matrixCOO, *workDistribution, this));
-  }
-  virtual void convertToSplitMatrixELL() override {
-    splitMatrixELL.reset(
-        new SplitMatrixELLSVM(*matrixCOO, *workDistribution, this));
-  }
-  virtual void convertToPartitionedMatrixCRS() override {
-    partitionedMatrixCRS.reset(
-        new PartitionedMatrixCRSSVM(*matrixCOO, *workDistribution, this));
-  }
-  virtual void convertToPartitionedMatrixELL() override {
-    partitionedMatrixELL.reset(
-        new PartitionedMatrixELLSVM(*matrixCOO, *workDistribution, this));
-  }
-#endif
-
   void finishAllDevices();
   void finishAllDevicesGatherQueue();
 
@@ -191,7 +106,7 @@ class CGMultiOpenCL : public CGOpenCLBase {
   virtual void cleanup() override {
     if (gatherImpl == GatherImplHost) {
 #if OPENCL_USE_SVM
-      freeSVM(p);
+      clSVMFree(ctx, p);
 #else
       delete[] p;
 #endif
@@ -267,7 +182,8 @@ void CGMultiOpenCL::init(const char *matrixFile) {
 
   if (gatherImpl == GatherImplHost) {
 #if OPENCL_USE_SVM
-    p = (floatType *)mallocSVM(sizeof(floatType) * N);
+    p = (floatType *)clSVMAlloc(ctx, CL_MEM_READ_WRITE, sizeof(floatType) * N,
+                                0);
 #else
     p = new floatType[N];
 #endif
