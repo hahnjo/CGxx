@@ -295,7 +295,7 @@ void CGMultiCUDA::doTransferToForDevice(int index) {
 
 void CGMultiCUDA::doTransferTo() {
   int numDevices = getNumberOfChunks();
-  std::thread *threads = new std::thread[numDevices];
+  std::unique_ptr<std::thread[]> threads(new std::thread[numDevices]);
 
   // Allocate memory on all devices and transfer necessary data.
   for (int i = 0; i < numDevices; i++) {
@@ -306,7 +306,6 @@ void CGMultiCUDA::doTransferTo() {
   for (int i = 0; i < numDevices; i++) {
     threads[i].join();
   }
-  delete[] threads;
 }
 
 void CGMultiCUDA::doTransferFrom() {
