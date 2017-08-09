@@ -39,4 +39,7 @@ if (OpenCL_FOUND)
     CGMultiOpenCL.cpp
   )
   target_link_libraries(cg_multi_ocl OpenCL)
+  if (CGXX_HAVE_PTHREAD_FLAG)
+    target_link_libraries(cg_multi_ocl -pthread)
+  endif()
 endif()
