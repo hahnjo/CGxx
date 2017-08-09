@@ -69,24 +69,18 @@ struct MatrixDataCRS {
   /// Values in the matrix.
   floatType *value;
 
-  ~MatrixDataCRS() {
+  /// Allocate #ptr.
+  virtual void allocatePtr(int rows);
+  /// Deallocate #ptr.
+  virtual void deallocatePtr();
+  /// Allocate #index and #value.
+  virtual void allocateIndexAndValue(int values);
+  /// Deallocate #index and #value.
+  virtual void deallocateIndexAndValue();
+
+  void deallocate() {
     deallocatePtr();
     deallocateIndexAndValue();
-  }
-
-  /// Allocate #ptr.
-  virtual void allocatePtr(int rows) { ptr = new int[rows + 1]; }
-  /// Deallocate #ptr.
-  virtual void deallocatePtr() { delete[] ptr; }
-  /// Allocate #index and #value.
-  virtual void allocateIndexAndValue(int values) {
-    index = new int[values];
-    value = new floatType[values];
-  }
-  /// Deallocate #index and #value.
-  virtual void deallocateIndexAndValue() {
-    delete[] index;
-    delete[] value;
   }
 };
 
@@ -105,70 +99,66 @@ struct MatrixDataELL {
   /// Data in the matrix.
   floatType *data;
 
-  ~MatrixDataELL() {
+  /// Allocate #length.
+  virtual void allocateLength(int rows);
+  /// Deallocate #length.
+  virtual void deallocateLength();
+  /// Allocate #index and #data.
+  virtual void allocateIndexAndData();
+  /// Deallocate #index and #data.
+  virtual void deallocateIndexAndData();
+
+  void deallocate() {
     deallocateLength();
     deallocateIndexAndData();
-  }
-
-  /// Allocate #length.
-  virtual void allocateLength(int rows) { length = new int[rows]; }
-  /// Deallocate #length.
-  virtual void deallocateLength() { delete[] length; }
-  /// Allocate #index and #data.
-  virtual void allocateIndexAndData() {
-    index = new int[elements];
-    data = new floatType[elements];
-  }
-  /// Deallocate #index and #data.
-  virtual void deallocateIndexAndData() {
-    delete[] index;
-    delete[] data;
   }
 };
 
 /// %Matrix with specified data.
 template <class Data> struct DataMatrix : Matrix, Data {
-  DataMatrix() = delete;
   /// Convert \a coo.
-  DataMatrix(const MatrixCOO &coo);
+  void convert(const MatrixCOO &coo);
 };
 using MatrixCRS = DataMatrix<MatrixDataCRS>;
 using MatrixELL = DataMatrix<MatrixDataELL>;
 
 /// %Matrix split for a WorkDistribution.
 template <class Data> struct SplitMatrix : Matrix {
+  /// Number of chunks in this matrix.
+  int numberOfChunks;
+
   /// Data for each chunk of the WorkDistribution.
   std::unique_ptr<Data[]> data;
 
-  SplitMatrix() = delete;
   /// Convert \a coo and split based on \a wd.
-  SplitMatrix(const MatrixCOO &coo, const WorkDistribution &wd);
+  void convert(const MatrixCOO &coo, const WorkDistribution &wd);
 
   /// Allocate #data.
-  virtual void allocateData(int numberOfChunks) {
-    data.reset(new Data[numberOfChunks]);
-  }
+  virtual void allocateData();
+
+  ~SplitMatrix();
 };
 using SplitMatrixCRS = SplitMatrix<MatrixDataCRS>;
 using SplitMatrixELL = SplitMatrix<MatrixDataELL>;
 
 /// %Matrix partitioned for a WorkDistribution.
 template <class Data> struct PartitionedMatrix : Matrix {
+  /// Number of chunks in this matrix.
+  int numberOfChunks;
+
   /// Data on the diagonal for each chunk of the WorkDistribution.
   std::unique_ptr<Data[]> diag;
 
   /// Data NOT on the diagonal for each chunk of the WorkDistribution.
   std::unique_ptr<Data[]> minor;
 
-  PartitionedMatrix() = delete;
   /// Convert \a coo and partition based on \a wd.
-  PartitionedMatrix(const MatrixCOO &coo, const WorkDistribution &wd);
+  void convert(const MatrixCOO &coo, const WorkDistribution &wd);
 
   /// Allocate #diag and #minor.
-  virtual void allocateDiagAndMinor(int numberOfChunks) {
-    diag.reset(new Data[numberOfChunks]);
-    minor.reset(new Data[numberOfChunks]);
-  }
+  virtual void allocateDiagAndMinor();
+
+  ~PartitionedMatrix();
 };
 using PartitionedMatrixCRS = PartitionedMatrix<MatrixDataCRS>;
 using PartitionedMatrixELL = PartitionedMatrix<MatrixDataELL>;

@@ -204,44 +204,30 @@ protected:
   /// with some computation of matvec().
   virtual bool supportsOverlappedGather() { return false; }
 
-  /// Convert to MatrixCRS.
-  virtual void convertToMatrixCRS() {
-    matrixCRS.reset(new MatrixCRS(*matrixCOO));
-  }
-  /// Convert to MatrixELL.
-  virtual void convertToMatrixELL() {
-    matrixELL.reset(new MatrixELL(*matrixCOO));
-  }
-  /// Convert to SplitMatrixCRS.
-  virtual void convertToSplitMatrixCRS() {
-    splitMatrixCRS.reset(new SplitMatrixCRS(*matrixCOO, *workDistribution));
-  }
-  /// Convert to SplitMatrixELL.
-  virtual void convertToSplitMatrixELL() {
-    splitMatrixELL.reset(new SplitMatrixELL(*matrixCOO, *workDistribution));
-  }
-  /// Convert to PartitionedMatrixCRS.
-  virtual void convertToPartitionedMatrixCRS() {
-    partitionedMatrixCRS.reset(
-        new PartitionedMatrixCRS(*matrixCOO, *workDistribution));
-  }
-  /// Convert to PartitionedMatrixELL.
-  virtual void convertToPartitionedMatrixELL() {
-    partitionedMatrixELL.reset(
-        new PartitionedMatrixELL(*matrixCOO, *workDistribution));
-  }
+  /// Allocate MatrixCRS.
+  virtual void allocateMatrixCRS();
+  /// Allocate MatrixELL.
+  virtual void allocateMatrixELL();
+  /// Allocate SplitMatrixCRS.
+  virtual void allocateSplitMatrixCRS();
+  /// Allocate SplitMatrixELL.
+  virtual void allocateSplitMatrixELL();
+  /// Allocate PartitionedMatrixCRS.
+  virtual void allocatePartitionedMatrixCRS();
+  /// Allocate PartitionedMatrixELL.
+  virtual void allocatePartitionedMatrixELL();
 
   /// Initialize the Jacobi preconditioner.
-  virtual void initJacobi() { jacobi.reset(new Jacobi(*matrixCOO)); }
+  virtual void allocateJacobi();
 
   /// Allocate #k.
-  virtual void allocateK() { k = new floatType[N]; }
+  virtual void allocateK();
   /// Deallocate #k.
-  virtual void deallocateK() { delete[] k; }
+  virtual void deallocateK();
   /// Allocate #x.
-  virtual void allocateX() { x = new floatType[N]; }
+  virtual void allocateX();
   /// Deallocate #x.
-  virtual void deallocateX() { delete[] x; }
+  virtual void deallocateX();
 
   /// Do transfer data before calling #solve().
   virtual void doTransferTo() {}
@@ -296,11 +282,7 @@ public:
   virtual void printSummary();
 
   /// Cleanup allocated memory.
-  virtual void cleanup() {
-    // Uses virtual methods and therefore cannot be done in destructor.
-    deallocateK();
-    deallocateX();
-  }
+  virtual void cleanup();
 
   /// @return new instance of a CG implementation.
   static CG *getInstance();

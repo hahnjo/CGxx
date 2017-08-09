@@ -67,6 +67,10 @@ class CGMultiOpenACC : public CG {
   virtual int getNumberOfChunks() override { return getNumberOfDevices(); }
   virtual bool supportsOverlappedGather() override { return true; }
 
+  // Keep them here so they can make use of pinned memory.
+  virtual void allocateX() override { x = new floatType[N]; }
+  virtual void deallocateX() override { delete[] x; }
+
   virtual void init(const char *matrixFile) override;
 
   void waitForAllDevicesGatherQueue();

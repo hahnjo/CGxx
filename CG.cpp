@@ -150,6 +150,29 @@ void CG::parseEnvironment() {
   }
 }
 
+// -----------------------------------------------------------------------------
+// The functions with allocations cannot live in the header file:
+// Otherwise, they are included from openacc/ which makes the PGI compiler use
+// page-locked memory for the matrix. That would decrease overall performance.
+
+void CG::allocateMatrixCRS() { matrixCRS.reset(new MatrixCRS); }
+void CG::allocateMatrixELL() { matrixELL.reset(new MatrixELL); }
+void CG::allocateSplitMatrixCRS() { splitMatrixCRS.reset(new SplitMatrixCRS); }
+void CG::allocateSplitMatrixELL() { splitMatrixELL.reset(new SplitMatrixELL); }
+void CG::allocatePartitionedMatrixCRS() {
+  partitionedMatrixCRS.reset(new PartitionedMatrixCRS);
+}
+void CG::allocatePartitionedMatrixELL() {
+  partitionedMatrixELL.reset(new PartitionedMatrixELL);
+}
+void CG::allocateJacobi() { jacobi.reset(new Jacobi); }
+void CG::allocateK() { k = new floatType[N]; }
+void CG::deallocateK() { delete[] k; }
+void CG::allocateX() { x = new floatType[N]; }
+void CG::deallocateX() { delete[] x; }
+
+// -----------------------------------------------------------------------------
+
 void CG::init(const char *matrixFile) {
   std::cout << "Reading matrix from " << matrixFile << "..." << std::endl;
   auto startIO = now();
@@ -185,29 +208,35 @@ void CG::init(const char *matrixFile) {
   case MatrixFormatCRS:
     if (numberOfChunks == -1) {
       std::cout << "Converting matrix to CRS format..." << std::endl;
-      convertToMatrixCRS();
+      allocateMatrixCRS();
+      matrixCRS->convert(*matrixCOO);
     } else if (!overlappedGather) {
       std::cout << "Converting and splitting matrix in CRS format..."
                 << std::endl;
-      convertToSplitMatrixCRS();
+      allocateSplitMatrixCRS();
+      splitMatrixCRS->convert(*matrixCOO, *workDistribution);
     } else {
       std::cout << "Converting and partitioning matrix in CRS format..."
                 << std::endl;
-      convertToPartitionedMatrixCRS();
+      allocatePartitionedMatrixCRS();
+      partitionedMatrixCRS->convert(*matrixCOO, *workDistribution);
     }
     break;
   case MatrixFormatELL:
     if (numberOfChunks == -1) {
       std::cout << "Converting matrix to ELL format..." << std::endl;
-      convertToMatrixELL();
+      allocateMatrixELL();
+      matrixELL->convert(*matrixCOO);
     } else if (!overlappedGather) {
       std::cout << "Converting and splitting matrix in ELL format..."
                 << std::endl;
-      convertToSplitMatrixELL();
+      allocateSplitMatrixELL();
+      splitMatrixELL->convert(*matrixCOO, *workDistribution);
     } else {
       std::cout << "Converting and partitioning matrix in ELL format..."
                 << std::endl;
-      convertToPartitionedMatrixELL();
+      allocatePartitionedMatrixELL();
+      partitionedMatrixELL->convert(*matrixCOO, *workDistribution);
     }
     break;
   }
@@ -218,7 +247,8 @@ void CG::init(const char *matrixFile) {
     break;
   case PreconditionerJacobi:
     std::cout << "Initializing Jacobi preconditioner..." << std::endl;
-    initJacobi();
+    allocateJacobi();
+    jacobi->init(*matrixCOO);
     break;
   }
 
@@ -457,6 +487,23 @@ void CG::printSummary() {
   if (preconditioner != PreconditionerNone) {
     printPadded("Preconditioner time:",
                 std::to_string(timing.preconditioner.count()));
+  }
+}
+
+void CG::cleanup() {
+  // Uses virtual methods and therefore cannot be done in destructor.
+  deallocateK();
+  deallocateX();
+
+  if (matrixCRS) {
+    matrixCRS->deallocate();
+  }
+  if (matrixELL) {
+    matrixELL->deallocate();
+  }
+
+  if (jacobi) {
+    jacobi->deallocateC();
   }
 }
 

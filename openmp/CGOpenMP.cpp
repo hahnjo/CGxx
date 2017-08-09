@@ -26,20 +26,14 @@
 /// Class implementing parallel kernels with OpenMP.
 class CGOpenMP : public CG {
   struct MatrixCRSOpenMP : MatrixCRS {
-    MatrixCRSOpenMP(const MatrixCOO &coo) : MatrixCRS(coo) {}
-
     virtual void allocatePtr(int rows) override;
     virtual void allocateIndexAndValue(int values) override;
   };
   struct MatrixELLOpenMP : MatrixELL {
-    MatrixELLOpenMP(const MatrixCOO &coo) : MatrixELL(coo) {}
-
     virtual void allocateLength(int rows) override;
     virtual void allocateIndexAndData() override;
   };
   struct JacobiOpenMP : Jacobi {
-    JacobiOpenMP(const MatrixCOO &coo) : Jacobi(coo) {}
-
     virtual void allocateC(int N) override;
   };
 
@@ -76,16 +70,14 @@ class CGOpenMP : public CG {
 
   virtual void init(const char *matrixFile) override;
 
-  virtual void convertToMatrixCRS() override {
-    matrixCRS.reset(new MatrixCRSOpenMP(*matrixCOO));
+  virtual void allocateMatrixCRS() override {
+    matrixCRS.reset(new MatrixCRSOpenMP);
   }
-  virtual void convertToMatrixELL() override {
-    matrixELL.reset(new MatrixELLOpenMP(*matrixCOO));
+  virtual void allocateMatrixELL() override {
+    matrixELL.reset(new MatrixELLOpenMP);
   }
 
-  virtual void initJacobi() override {
-    jacobi.reset(new JacobiOpenMP(*matrixCOO));
-  }
+  virtual void allocateJacobi() override { jacobi.reset(new JacobiOpenMP); }
 
   virtual void allocateK() override;
   virtual void allocateX() override;

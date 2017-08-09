@@ -29,47 +29,6 @@
 /// Class implementing parallel kernels with CUDA.
 class CGCUDABase : public CG {
 protected:
-  /// Derived struct for pinned memory.
-  struct MatrixDataCRSCUDA : MatrixDataCRS {
-    virtual void allocatePtr(int rows) override {
-      checkedMallocHost(&ptr, sizeof(int) * (rows + 1));
-    }
-    virtual void deallocatePtr() override { checkedFreeHost(ptr); }
-    virtual void allocateIndexAndValue(int values) override {
-      checkedMallocHost(&index, sizeof(int) * values);
-      checkedMallocHost(&value, sizeof(floatType) * values);
-    }
-    virtual void deallocateIndexAndValue() override {
-      checkedFreeHost(index);
-      checkedFreeHost(value);
-    }
-  };
-  /// Derived struct for pinned memory.
-  struct MatrixDataELLCUDA : MatrixDataELL {
-    virtual void allocateLength(int rows) override {
-      checkedMallocHost(&length, sizeof(int) * rows);
-    }
-    virtual void deallocateLength() override { checkedFreeHost(length); }
-    virtual void allocateIndexAndData() override {
-      checkedMallocHost(&index, sizeof(int) * elements);
-      checkedMallocHost(&data, sizeof(floatType) * elements);
-    }
-    virtual void deallocateIndexAndData() override {
-      checkedFreeHost(index);
-      checkedFreeHost(data);
-    }
-  };
-  /// Derived struct for pinned memory.
-  struct JacobiCUDA : Jacobi {
-    /// @see Jacobi
-    JacobiCUDA(const MatrixCOO &coo) : Jacobi(coo) {}
-
-    virtual void allocateC(int N) override {
-      checkedMallocHost(&C, sizeof(floatType) * N);
-    }
-    virtual void deallocateC() override { checkedFreeHost(C); }
-  };
-
   /// Holds information about a single device, especially memory and its
   /// launch configuration.
   struct Device {
@@ -125,7 +84,7 @@ protected:
     };
     /// MatrixDataELL on the device.
     MatrixELLDevice matrixELL;
-    /// JacobiCUDA on the device.
+    /// Jacobi on the device.
     struct {
       floatType *C = nullptr;
     } jacobi;
@@ -164,14 +123,6 @@ protected:
     return preconditioner == PreconditionerJacobi;
   }
 
-  virtual void initJacobi() override {
-    jacobi.reset(new JacobiCUDA(*matrixCOO));
-  }
-
-  virtual void allocateK() override {
-    checkedMallocHost(&k, sizeof(floatType) * N);
-  }
-  virtual void deallocateK() override { checkedFreeHost(k); }
   virtual void allocateX() override {
     checkedMallocHost(&x, sizeof(floatType) * N);
   }

@@ -58,12 +58,6 @@ static inline void checkedMemcpyToDevice(void *dst, const void *src,
   checkedMemcpy(dst, src, count, cudaMemcpyHostToDevice);
 }
 
-static inline void checkedMemcpyAsyncToDevice(void *dst, const void *src,
-                                              size_t count,
-                                              cudaStream_t stream = 0) {
-  checkedMemcpyAsync(dst, src, count, cudaMemcpyHostToDevice, stream);
-}
-
 static inline void checkedFree(void *devPtr) { checkError(cudaFree(devPtr)); }
 
 static inline void checkedMallocHost(void *ptr, size_t size) {

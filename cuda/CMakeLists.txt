@@ -29,4 +29,7 @@ if (CUDA_FOUND)
     CGMultiCUDA.cu
     kernel.cu
   )
+  if (CGXX_HAVE_PTHREAD_FLAG)
+    target_link_libraries(cg_multi_cuda -pthread)
+  endif()
 endif()

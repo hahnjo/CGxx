@@ -22,6 +22,7 @@ Environment variables
 | `CG_WORK_DISTRIBUTION` | Way of distributing work to multiple devices | `row`, `nz` | `row` |
 | `CG_OVERLAPPED_GATHER` | Whether to overlap computation and communication for multiple devices | `0` = disabled | depends on programming model |
 | `CG_CUDA_GATHER_IMPL` | Implementation to use for gathering in `matvec` kernel | `host`, `device`, `p2p` | `host` |
+| `CG_OCL_PARALLEL_TRANSFER_TO` | Whether to transfer the data to the device in parallel | `0` = disabled | enabled |
 | `CG_OCL_GATHER_IMPL` | Implementation to use for gathering in `matvec` kernel | `host`, `device` | `host` |
 
 License

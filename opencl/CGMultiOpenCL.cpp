@@ -20,6 +20,7 @@
 #include <cassert>
 #include <cmath>
 #include <memory>
+#include <thread>
 #include <vector>
 
 #include "../CG.h"
@@ -39,72 +40,6 @@ class CGMultiOpenCL : public CGOpenCLBase {
     GatherImplHost,
     GatherImplDevice,
   };
-
-#if OPENCL_USE_SVM
-  struct SplitMatrixCRSSVM : SplitMatrixCRS {
-    CGMultiOpenCL *cg;
-    SplitMatrixCRSSVM(const MatrixCOO &coo, const WorkDistribution &wd,
-                      CGMultiOpenCL *cg)
-        : SplitMatrixCRS(coo, wd), cg(cg) {}
-
-    virtual void allocateData(int numberOfChunks) override {
-      MatrixDataCRSSVM *alloc = new MatrixDataCRSSVM[numberOfChunks];
-      for (int i = 0; i < numberOfChunks; i++) {
-        alloc[i].cg = cg;
-      }
-      data.reset((MatrixDataCRS *)alloc);
-    }
-  };
-  struct SplitMatrixELLSVM : SplitMatrixELL {
-    CGMultiOpenCL *cg;
-    SplitMatrixELLSVM(const MatrixCOO &coo, const WorkDistribution &wd,
-                      CGMultiOpenCL *cg)
-        : SplitMatrixELL(coo, wd), cg(cg) {}
-
-    virtual void allocateData(int numberOfChunks) override {
-      MatrixDataELLSVM *alloc = new MatrixDataELLSVM[numberOfChunks];
-      for (int i = 0; i < numberOfChunks; i++) {
-        alloc[i].cg = cg;
-      }
-      data.reset((MatrixDataELL *)alloc);
-    }
-  };
-
-  struct PartitionedMatrixCRSSVM : PartitionedMatrixCRS {
-    CGMultiOpenCL *cg;
-    PartitionedMatrixCRSSVM(const MatrixCOO &coo, const WorkDistribution &wd,
-                            CGMultiOpenCL *cg)
-        : PartitionedMatrixCRS(coo, wd), cg(cg) {}
-
-    virtual void allocateDiagAndMinor(int numberOfChunks) override {
-      MatrixDataCRSSVM *allocDiag = new MatrixDataCRSSVM[numberOfChunks];
-      MatrixDataCRSSVM *allocMinor = new MatrixDataCRSSVM[numberOfChunks];
-      for (int i = 0; i < numberOfChunks; i++) {
-        allocDiag[i].cg = cg;
-        allocMinor[i].cg = cg;
-      }
-      diag.reset((MatrixDataCRS *)allocDiag);
-      minor.reset((MatrixDataCRS *)allocMinor);
-    }
-  };
-  struct PartitionedMatrixELLSVM : PartitionedMatrixELL {
-    CGMultiOpenCL *cg;
-    PartitionedMatrixELLSVM(const MatrixCOO &coo, const WorkDistribution &wd,
-                            CGMultiOpenCL *cg)
-        : PartitionedMatrixELL(coo, wd), cg(cg) {}
-
-    virtual void allocateDiagAndMinor(int numberOfChunks) override {
-      MatrixDataELLSVM *allocDiag = new MatrixDataELLSVM[numberOfChunks];
-      MatrixDataELLSVM *allocMinor = new MatrixDataELLSVM[numberOfChunks];
-      for (int i = 0; i < numberOfChunks; i++) {
-        allocDiag[i].cg = cg;
-        allocMinor[i].cg = cg;
-      }
-      diag.reset((MatrixDataELL *)allocDiag);
-      minor.reset((MatrixDataELL *)allocMinor);
-    }
-  };
-#endif
 
   struct MultiDevice : Device {
     int id;
@@ -136,6 +71,8 @@ class CGMultiOpenCL : public CGOpenCLBase {
     }
   };
 
+  bool parallelTransferTo = true;
+
   std::vector<MultiDevice> devices;
   GatherImpl gatherImpl = GatherImplHost;
 
@@ -150,28 +87,10 @@ class CGMultiOpenCL : public CGOpenCLBase {
   virtual void parseEnvironment() override;
   virtual void init(const char *matrixFile) override;
 
-#if OPENCL_USE_SVM
-  virtual void convertToSplitMatrixCRS() override {
-    splitMatrixCRS.reset(
-        new SplitMatrixCRSSVM(*matrixCOO, *workDistribution, this));
-  }
-  virtual void convertToSplitMatrixELL() override {
-    splitMatrixELL.reset(
-        new SplitMatrixELLSVM(*matrixCOO, *workDistribution, this));
-  }
-  virtual void convertToPartitionedMatrixCRS() override {
-    partitionedMatrixCRS.reset(
-        new PartitionedMatrixCRSSVM(*matrixCOO, *workDistribution, this));
-  }
-  virtual void convertToPartitionedMatrixELL() override {
-    partitionedMatrixELL.reset(
-        new PartitionedMatrixELLSVM(*matrixCOO, *workDistribution, this));
-  }
-#endif
-
   void finishAllDevices();
   void finishAllDevicesGatherQueue();
 
+  void doTransferToForDevice(int index);
   virtual void doTransferTo() override;
   virtual void doTransferFrom() override;
 
@@ -191,7 +110,7 @@ class CGMultiOpenCL : public CGOpenCLBase {
   virtual void cleanup() override {
     if (gatherImpl == GatherImplHost) {
 #if OPENCL_USE_SVM
-      freeSVM(p);
+      clSVMFree(ctx, p);
 #else
       delete[] p;
 #endif
@@ -209,6 +128,8 @@ public:
   CGMultiOpenCL() : CGOpenCLBase(/* overlappedGather= */ true) {}
 };
 
+const char *CG_OCL_PARALLEL_TRANSFER_TO = "CG_OCL_PARALLEL_TRANSFER_TO";
+
 const char *CG_OCL_GATHER_IMPL = "CG_OCL_GATHER_IMPL";
 const char *CG_OCL_GATHER_IMPL_HOST = "host";
 const char *CG_OCL_GATHER_IMPL_DEVICE = "device";
@@ -216,7 +137,12 @@ const char *CG_OCL_GATHER_IMPL_DEVICE = "device";
 void CGMultiOpenCL::parseEnvironment() {
   CG::parseEnvironment();
 
-  const char *env = std::getenv(CG_OCL_GATHER_IMPL);
+  const char *env = std::getenv(CG_OCL_PARALLEL_TRANSFER_TO);
+  if (env != NULL && *env != 0) {
+    parallelTransferTo = (std::string(env) != "0");
+  }
+
+  env = std::getenv(CG_OCL_GATHER_IMPL);
   if (env != NULL && *env != 0) {
     std::string lower(env);
     std::transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
@@ -267,7 +193,8 @@ void CGMultiOpenCL::init(const char *matrixFile) {
 
   if (gatherImpl == GatherImplHost) {
 #if OPENCL_USE_SVM
-    p = (floatType *)mallocSVM(sizeof(floatType) * N);
+    p = (floatType *)clSVMAlloc(ctx, CL_MEM_READ_WRITE, sizeof(floatType) * N,
+                                0);
 #else
     p = new floatType[N];
 #endif
@@ -286,68 +213,94 @@ void CGMultiOpenCL::finishAllDevicesGatherQueue() {
   }
 }
 
-void CGMultiOpenCL::doTransferTo() {
+void CGMultiOpenCL::doTransferToForDevice(int index) {
   size_t fullVectorSize = sizeof(floatType) * N;
 
-  // Allocate memory on all devices and transfer necessary data.
-  for (MultiDevice &device : devices) {
-    int d = device.id;
-    int offset = workDistribution->offsets[d];
-    int length = workDistribution->lengths[d];
+  MultiDevice &device = devices[index];
+  int d = device.id;
+  int offset = workDistribution->offsets[d];
+  int length = workDistribution->lengths[d];
 
-    size_t vectorSize = sizeof(floatType) * length;
-    device.k = checkedCreateReadBuffer(vectorSize);
-    device.x = checkedCreateBuffer(fullVectorSize);
-    device.checkedEnqueueWriteBuffer(device.k, vectorSize, k + offset);
-    device.checkedEnqueueWriteBuffer(device.x, fullVectorSize, x);
+  size_t vectorSize = sizeof(floatType) * length;
+  device.k = checkedCreateReadBuffer(vectorSize);
+  device.x = checkedCreateBuffer(fullVectorSize);
+  device.checkedEnqueueWriteBuffer(device.k, vectorSize, k + offset);
+  device.checkedEnqueueWriteBuffer(device.x, fullVectorSize, x);
 
-    device.p = checkedCreateBuffer(fullVectorSize);
-    device.q = checkedCreateBuffer(vectorSize);
-    device.r = checkedCreateBuffer(vectorSize);
+  device.p = checkedCreateBuffer(fullVectorSize);
+  device.q = checkedCreateBuffer(vectorSize);
+  device.r = checkedCreateBuffer(vectorSize);
 
-    switch (matrixFormat) {
-    case MatrixFormatCRS:
-      if (!overlappedGather) {
-        allocateAndCopyMatrixDataCRS(length, splitMatrixCRS->data[d], device,
-                                     device.matrixCRS);
-      } else {
-        allocateAndCopyMatrixDataCRS(length, partitionedMatrixCRS->diag[d],
-                                     device, device.diagMatrixCRS);
-        allocateAndCopyMatrixDataCRS(length, partitionedMatrixCRS->minor[d],
-                                     device, device.matrixCRS);
-      }
-      break;
-    case MatrixFormatELL:
-      if (!overlappedGather) {
-        allocateAndCopyMatrixDataELL(length, splitMatrixELL->data[d], device,
-                                     device.matrixELL);
-      } else {
-        allocateAndCopyMatrixDataELL(length, partitionedMatrixELL->diag[d],
-                                     device, device.diagMatrixELL);
-        allocateAndCopyMatrixDataELL(length, partitionedMatrixELL->minor[d],
-                                     device, device.matrixELL);
-      }
+  switch (matrixFormat) {
+  case MatrixFormatCRS:
+    if (!overlappedGather) {
+      allocateAndCopyMatrixDataCRS(length, splitMatrixCRS->data[d], device,
+                                   device.matrixCRS);
+    } else {
+      allocateAndCopyMatrixDataCRS(length, partitionedMatrixCRS->diag[d],
+                                   device, device.diagMatrixCRS);
+      allocateAndCopyMatrixDataCRS(length, partitionedMatrixCRS->minor[d],
+                                   device, device.matrixCRS);
+    }
+    break;
+  case MatrixFormatELL:
+    if (!overlappedGather) {
+      allocateAndCopyMatrixDataELL(length, splitMatrixELL->data[d], device,
+                                   device.matrixELL);
+    } else {
+      allocateAndCopyMatrixDataELL(length, partitionedMatrixELL->diag[d],
+                                   device, device.diagMatrixELL);
+      allocateAndCopyMatrixDataELL(length, partitionedMatrixELL->minor[d],
+                                   device, device.matrixELL);
+    }
+    break;
+  default:
+    assert(0 && "Invalid matrix format!");
+  }
+  if (preconditioner != PreconditionerNone) {
+    device.z = checkedCreateBuffer(vectorSize);
+
+    switch (preconditioner) {
+    case PreconditionerJacobi:
+      device.jacobi.C = checkedCreateBuffer(vectorSize);
+      device.checkedEnqueueWriteBuffer(device.jacobi.C, vectorSize,
+                                       jacobi->C + offset);
       break;
     default:
-      assert(0 && "Invalid matrix format!");
+      assert(0 && "Invalid preconditioner!");
     }
-    if (preconditioner != PreconditionerNone) {
-      device.z = checkedCreateBuffer(vectorSize);
-
-      switch (preconditioner) {
-      case PreconditionerJacobi:
-        device.jacobi.C = checkedCreateBuffer(vectorSize);
-        device.checkedEnqueueWriteBuffer(device.jacobi.C, vectorSize,
-                                         jacobi->C + offset);
-        break;
-      default:
-        assert(0 && "Invalid preconditioner!");
-      }
-    }
-
-    device.tmp = checkedCreateBuffer(sizeof(floatType) * Device::MaxGroups);
   }
 
+  device.tmp = checkedCreateBuffer(sizeof(floatType) * Device::MaxGroups);
+}
+
+void CGMultiOpenCL::doTransferTo() {
+  int numDevices = getNumberOfChunks();
+
+  // In theory, all enqueued transfers in doTransferToForDevice are nonblocking.
+  // However in practice, CUDA and hence pocl-cuda cannot overlap asynchronous
+  // transfers with memory allocation on the same thread :-(
+  // (see https://devtalk.nvidia.com/default/topic/1021744)
+  if (parallelTransferTo) {
+    std::unique_ptr<std::thread[]> threads(new std::thread[numDevices]);
+
+    // Allocate memory on all devices and transfer necessary data.
+    for (int i = 0; i < numDevices; i++) {
+      threads[i] = std::thread(&CGMultiOpenCL::doTransferToForDevice, this, i);
+    }
+
+    // Synchronize started threads.
+    for (int i = 0; i < numDevices; i++) {
+      threads[i].join();
+    }
+  } else {
+    // Allocate memory on all devices and transfer necessary data.
+    for (int i = 0; i < numDevices; i++) {
+      doTransferToForDevice(i);
+    }
+  }
+
+  // We have to wait in both cases because doTransferToForDevice does not!
   finishAllDevices();
 }
 
@@ -683,6 +636,11 @@ void CGMultiOpenCL::printSummary() {
   CG::printSummary();
 
   std::cout << std::endl;
+
+  if (parallelTransferTo) {
+    std::cout << "Parallel transfer to the devices!" << std::endl;
+  }
+
   std::string gatherImplName;
   switch (gatherImpl) {
   case GatherImplHost:
