@@ -170,11 +170,8 @@ void CGMultiOpenCL::init(const char *matrixFile) {
                         &err);
   checkError(err);
 
+  // Resize the vector so that getNumberOfChunks() can get the right value.
   devices.resize(numberOfDevices);
-  for (int d = 0; d < numberOfDevices; d++) {
-    devices[d].id = d;
-    devices[d].init(device_ids[d], this);
-  }
 
   // Now that we have working devices, compile the program and read the matrix.
   CGOpenCLBase::init(matrixFile);
@@ -185,7 +182,14 @@ void CGMultiOpenCL::init(const char *matrixFile) {
     matvecKernelELLRoundup = checkedCreateKernel("matvecKernelELLRoundup");
   }
 
-  for (MultiDevice &device : devices) {
+  for (int d = 0; d < numberOfDevices; d++) {
+    MultiDevice &device = devices[d];
+
+    // Call init() ony here because pocl starts two background threads for each
+    // cl_command_queue that would slow down the initialization. (2017-08-10)
+    device.id = d;
+    device.init(device_ids[d], this);
+
     device.workDistribution = workDistribution.get();
     int length = workDistribution->lengths[device.id];
     device.calculateLaunchConfiguration(length);
