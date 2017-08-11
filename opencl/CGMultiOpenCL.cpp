@@ -184,9 +184,6 @@ void CGMultiOpenCL::init(const char *matrixFile) {
 
   for (int d = 0; d < numberOfDevices; d++) {
     MultiDevice &device = devices[d];
-
-    // Call init() ony here because pocl starts two background threads for each
-    // cl_command_queue that would slow down the initialization. (2017-08-10)
     device.id = d;
     device.init(device_ids[d], this);
 
