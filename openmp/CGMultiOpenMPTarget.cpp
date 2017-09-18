@@ -249,14 +249,14 @@ void CGMultiOpenMPTarget::doTransferFrom() {
     int length = workDistribution->lengths[d];
 
     // Copy back this device's part of the solution...
-    #pragma omp target update nowait from(x[offset:length]) depend(out: x[0:N])
+    #pragma omp target update nowait from(x[offset:length]) depend(out: x[offset:length])
     // ... and delete the whole array afterwards.
 #ifdef __INTEL_COMPILER
     // Until #6000161589 is fixed, we can't have an asynchronous offloading that
     // depends on previous tasks!
     #pragma omp taskwait
 #endif
-    #pragma omp target exit data nowait map(release: x[0:N]) depend(in: x[0:N])
+    #pragma omp target exit data nowait map(release: x[0:N]) depend(in: x[offset:length])
 
     #pragma omp target exit data nowait map(release: p[0:N], q[offset:length]) \
                                         map(release: r[offset:length]) \
