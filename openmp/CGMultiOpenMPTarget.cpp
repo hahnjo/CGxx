@@ -424,7 +424,7 @@ void CGMultiOpenMPTarget::matvecKernelELL(MatrixDataELL *matrices, floatType *x,
     floatType *data = matrices[d].data;
 
 #pragma omp target nowait device(d) map(x[0:N], y[offset:length]) \
-                   map(lengthA[0:N], index[0:elements], data[0:elements])
+                   map(lengthA[0:length], index[0:elements], data[0:elements])
 #pragma omp teams distribute parallel for simd
     for (int i = 0; i < N; i++) {
       // Skip load and store if nothing to be done...
