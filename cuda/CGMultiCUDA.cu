@@ -159,10 +159,7 @@ void CGMultiCUDA::parseEnvironment() {
 void CGMultiCUDA::init(const char *matrixFile) {
   int numberOfDevices;
   cudaGetDeviceCount(&numberOfDevices);
-  if (numberOfDevices < 2) {
-    std::cerr << "Need at least 2 devices!" << std::endl;
-    std::exit(1);
-  }
+
   devices.resize(numberOfDevices);
   for (int d = 0; d < numberOfDevices; d++) {
     devices[d].init(d, this);
