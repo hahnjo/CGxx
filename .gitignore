@@ -1,3 +1,7 @@
+# Temporary files
+*~
+*.swp
+
 build*
 html
 latex
