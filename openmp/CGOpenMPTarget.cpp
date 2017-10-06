@@ -232,6 +232,7 @@ void CGOpenMPTarget::matvecKernelELL(floatType *x, floatType *y) {
                    map(length[0:N], index[0:elements], data[0:elements])
   for (int i = 0; i < N; i++) {
     floatType tmp = 0;
+    #pragma unroll 1
     for (int j = 0; j < length[i]; j++) {
       int k = j * N + i;
       tmp += data[k] * x[index[k]];

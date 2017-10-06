@@ -430,6 +430,7 @@ void CGMultiOpenMPTarget::matvecKernelELL(MatrixDataELL *matrices, floatType *x,
       // Skip load and store if nothing to be done...
       if (!roundup || lengthA[i] > 0) {
         floatType tmp = (roundup ? y[offset + i] : 0);
+	#pragma unroll 1
         for (int j = 0; j < lengthA[i]; j++) {
           int k = j * N + i;
           tmp += data[k] * x[index[k]];
