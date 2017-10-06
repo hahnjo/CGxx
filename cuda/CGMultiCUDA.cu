@@ -92,10 +92,14 @@ class CGMultiCUDA : public CGCUDABase {
     }
   };
 
+  static const size_t UnifiedMemoryAlignment = 2 * 1024 * 1024;
+
   std::vector<MultiDevice> devices;
   GatherImpl gatherImpl = GatherImplHost;
+  bool unifiedPadPVector = false;
   bool unifiedMemAdvise = true;
 
+  floatType *pUnified = nullptr;
   floatType *p = nullptr;
 
   virtual int getNumberOfChunks() override { return devices.size(); }
@@ -131,7 +135,7 @@ class CGMultiCUDA : public CGCUDABase {
     if (gatherImpl == GatherImplHost) {
       checkedFreeHost(p);
     } else if (gatherImpl == GatherImplUnified) {
-      checkedFree(p);
+      checkedFree(pUnified);
     }
   }
 
@@ -145,6 +149,7 @@ const char *CG_CUDA_GATHER_IMPL_DEVICE = "device";
 const char *CG_CUDA_GATHER_IMPL_P2P = "p2p";
 const char *CG_CUDA_GATHER_IMPL_UNIFIED = "unified";
 
+const char *CG_CUDA_UNIFIED_PAD_PVECTOR = "CG_CUDA_UNIFIED_PAD_PVECTOR";
 const char *CG_CUDA_UNIFIED_MEM_ADVISE = "CG_CUDA_UNIFIED_MEM_ADVISE";
 
 void CGMultiCUDA::parseEnvironment() {
@@ -180,6 +185,17 @@ void CGMultiCUDA::parseEnvironment() {
     }
   }
 
+  env = std::getenv(CG_CUDA_UNIFIED_PAD_PVECTOR);
+  if (env != NULL && *env != 0) {
+    if (gatherImpl != GatherImplUnified) {
+      std::cerr << CG_CUDA_UNIFIED_PAD_PVECTOR
+                << " may only be used for unified memory!" << std::endl;
+      std::exit(1);
+    }
+
+    unifiedPadPVector = (std::string(env) != "0");
+  }
+
   env = std::getenv(CG_CUDA_UNIFIED_MEM_ADVISE);
   if (env != NULL && *env != 0) {
     if (gatherImpl != GatherImplUnified) {
@@ -195,6 +211,12 @@ void CGMultiCUDA::parseEnvironment() {
 void CGMultiCUDA::init(const char *matrixFile) {
   int numberOfDevices;
   cudaGetDeviceCount(&numberOfDevices);
+
+  if (gatherImpl == GatherImplUnified && unifiedPadPVector && numberOfDevices != 2) {
+    std::cerr << CG_CUDA_UNIFIED_PAD_PVECTOR
+              << " may only be used with exactly 2 devices!" << std::endl;
+    std::exit(1);
+  }
 
   devices.resize(numberOfDevices);
   for (int d = 0; d < numberOfDevices; d++) {
@@ -239,7 +261,23 @@ void CGMultiCUDA::init(const char *matrixFile) {
   if (gatherImpl == GatherImplHost) {
     checkedMallocHost(&p, sizeof(floatType) * N);
   } else if (gatherImpl == GatherImplUnified) {
-    checkError(cudaMallocManaged(&p, sizeof(floatType) * N));
+    size_t size = sizeof(floatType) * N;
+    if (unifiedPadPVector) {
+      // We need additional space for the alignment.
+      size += UnifiedMemoryAlignment;
+    }
+
+    checkError(cudaMallocManaged(&pUnified, size));
+    if (unifiedPadPVector) {
+      // Pad pointer so that the offset of the second device is aligned.
+      void *secondDevice = pUnified + workDistribution->offsets[1];
+      size_t padding = UnifiedMemoryAlignment;
+      padding -= ((size_t) secondDevice) & (UnifiedMemoryAlignment - 1);
+      p = (floatType *) (((char *)pUnified) + padding);
+    } else {
+      // Just take the pointer...
+      p = pUnified;
+    }
   }
 }
 
@@ -708,8 +746,11 @@ void CGMultiCUDA::printSummary() {
   printPadded("Gather implementation:", gatherImplName);
   if (gatherImpl == GatherImplUnified) {
     std::cout << "Unified memory implies overlapping the gather!";
+    if (unifiedPadPVector) {
+      std::cout << " The vector 'p' was padded to align on page size.";
+    }
     if (unifiedMemAdvise) {
-      std::cout << " Memory advices were given!";
+      std::cout << " Memory advices were given.";
     }
     std::cout << std::endl;
   }
