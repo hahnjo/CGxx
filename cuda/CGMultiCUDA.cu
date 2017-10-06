@@ -94,6 +94,7 @@ class CGMultiCUDA : public CGCUDABase {
 
   std::vector<MultiDevice> devices;
   GatherImpl gatherImpl = GatherImplHost;
+  bool unifiedMemAdvise = true;
 
   floatType *p = nullptr;
 
@@ -144,6 +145,8 @@ const char *CG_CUDA_GATHER_IMPL_DEVICE = "device";
 const char *CG_CUDA_GATHER_IMPL_P2P = "p2p";
 const char *CG_CUDA_GATHER_IMPL_UNIFIED = "unified";
 
+const char *CG_CUDA_UNIFIED_MEM_ADVISE = "CG_CUDA_UNIFIED_MEM_ADVISE";
+
 void CGMultiCUDA::parseEnvironment() {
   CG::parseEnvironment();
 
@@ -175,6 +178,17 @@ void CGMultiCUDA::parseEnvironment() {
                 << CG_CUDA_GATHER_IMPL_UNIFIED << ")" << std::endl;
       std::exit(1);
     }
+  }
+
+  env = std::getenv(CG_CUDA_UNIFIED_MEM_ADVISE);
+  if (env != NULL && *env != 0) {
+    if (gatherImpl != GatherImplUnified) {
+      std::cerr << CG_CUDA_UNIFIED_MEM_ADVISE
+                << " may only be used for unified memory!" << std::endl;
+      std::exit(1);
+    }
+
+    unifiedMemAdvise = (std::string(env) != "0");
   }
 }
 
@@ -270,6 +284,9 @@ void CGMultiCUDA::doTransferToForDevice(int index) {
 
   if (gatherImpl != GatherImplUnified) {
     checkedMalloc(&device.p, fullVectorSize);
+  } else if (unifiedMemAdvise) {
+    checkError(cudaMemAdvise(p + offset, length,
+                             cudaMemAdviseSetPreferredLocation, d));
   }
   checkedMalloc(&device.q, vectorSize);
   checkedMalloc(&device.r, vectorSize);
@@ -690,7 +707,11 @@ void CGMultiCUDA::printSummary() {
   assert(gatherImplName.length() > 0);
   printPadded("Gather implementation:", gatherImplName);
   if (gatherImpl == GatherImplUnified) {
-    std::cout << "Unified memory implies overlapping the gather!" << std::endl;
+    std::cout << "Unified memory implies overlapping the gather!";
+    if (unifiedMemAdvise) {
+      std::cout << " Memory advices were given!";
+    }
+    std::cout << std::endl;
   }
 }
 
