@@ -46,6 +46,7 @@ __inline__ __device__ void _matvecKernelELL(int *length, int *index,
     // Skip load and store if nothing to be done...
     if (!roundup || length[i] > 0) {
       floatType tmp = (roundup ? y[i] : 0);
+      #pragma unroll 1
       for (int j = 0; j < length[i]; j++) {
         int k = j * N + i;
         tmp += data[k] * x[index[k]];
