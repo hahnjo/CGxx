@@ -84,6 +84,7 @@ private:
 
   floatType residual;
   floatType tolerance = 1e-9;
+  floatType checkTolerance = 1e-5;
 
   /// Struct holding timing information for IO, converting, the total solve time
   /// and for each kernel.
@@ -95,6 +96,7 @@ private:
     duration converting{0};
     duration transferTo{0};
     duration transferFrom{0};
+    duration check{0};
 
     duration solve{0};
     duration matvec{0};
@@ -280,6 +282,9 @@ public:
 
   /// Print summary after system has been solved.
   virtual void printSummary();
+
+  /// Check the computed solution.
+  bool check();
 
   /// Cleanup allocated memory.
   virtual void cleanup();

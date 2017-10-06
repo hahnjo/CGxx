@@ -33,6 +33,7 @@ class CGMultiCUDA : public CGCUDABase {
     GatherImplHost,
     GatherImplDevice,
     GatherImplP2P,
+    GatherImplUnified,
   };
 
   struct MultiDevice : Device {
@@ -74,7 +75,15 @@ class CGMultiCUDA : public CGCUDABase {
     floatType *getVector(Vector v, bool forMatvec) const {
       assert(!forMatvec || (v == VectorX || v == VectorP));
 
-      floatType *res = Device::getVector(v);
+      floatType *res;
+      // With unified memory, there is only one address that is valid for the
+      // host and all devices.
+      if (cg->gatherImpl == GatherImplUnified && v == VectorP) {
+        res = cg->p;
+      } else {
+        res = Device::getVector(v);
+      }
+
       if (!forMatvec && (v == VectorX || v == VectorP)) {
         // These vectors are fully allocated, but we only need the "local" part.
         res += cg->workDistribution->offsets[id];
@@ -83,9 +92,14 @@ class CGMultiCUDA : public CGCUDABase {
     }
   };
 
+  static const size_t UnifiedMemoryAlignment = 2 * 1024 * 1024;
+
   std::vector<MultiDevice> devices;
   GatherImpl gatherImpl = GatherImplHost;
+  bool unifiedPadPVector = false;
+  bool unifiedMemAdvise = true;
 
+  floatType *pUnified = nullptr;
   floatType *p = nullptr;
 
   virtual int getNumberOfChunks() override { return devices.size(); }
@@ -120,6 +134,8 @@ class CGMultiCUDA : public CGCUDABase {
 
     if (gatherImpl == GatherImplHost) {
       checkedFreeHost(p);
+    } else if (gatherImpl == GatherImplUnified) {
+      checkedFree(pUnified);
     }
   }
 
@@ -131,6 +147,10 @@ const char *CG_CUDA_GATHER_IMPL = "CG_CUDA_GATHER_IMPL";
 const char *CG_CUDA_GATHER_IMPL_HOST = "host";
 const char *CG_CUDA_GATHER_IMPL_DEVICE = "device";
 const char *CG_CUDA_GATHER_IMPL_P2P = "p2p";
+const char *CG_CUDA_GATHER_IMPL_UNIFIED = "unified";
+
+const char *CG_CUDA_UNIFIED_PAD_PVECTOR = "CG_CUDA_UNIFIED_PAD_PVECTOR";
+const char *CG_CUDA_UNIFIED_MEM_ADVISE = "CG_CUDA_UNIFIED_MEM_ADVISE";
 
 void CGMultiCUDA::parseEnvironment() {
   CG::parseEnvironment();
@@ -146,19 +166,57 @@ void CGMultiCUDA::parseEnvironment() {
       gatherImpl = GatherImplDevice;
     } else if (lower == CG_CUDA_GATHER_IMPL_P2P) {
       gatherImpl = GatherImplP2P;
+    } else if (lower == CG_CUDA_GATHER_IMPL_UNIFIED) {
+      gatherImpl = GatherImplUnified;
+
+      if (overlappedGather) {
+        overlappedGather = false;
+      } else {
+        std::cerr << "WARNING: Unified memory implies overlapping the gather!"
+                  << std::endl;
+      }
     } else {
       std::cerr << "Invalid value for " << CG_CUDA_GATHER_IMPL << "! ("
                 << CG_CUDA_GATHER_IMPL_HOST << ", "
-                << CG_CUDA_GATHER_IMPL_DEVICE << ", or "
-                << CG_CUDA_GATHER_IMPL_P2P << ")" << std::endl;
+                << CG_CUDA_GATHER_IMPL_DEVICE << ", "
+                << CG_CUDA_GATHER_IMPL_P2P << ", or "
+                << CG_CUDA_GATHER_IMPL_UNIFIED << ")" << std::endl;
       std::exit(1);
     }
+  }
+
+  env = std::getenv(CG_CUDA_UNIFIED_PAD_PVECTOR);
+  if (env != NULL && *env != 0) {
+    if (gatherImpl != GatherImplUnified) {
+      std::cerr << CG_CUDA_UNIFIED_PAD_PVECTOR
+                << " may only be used for unified memory!" << std::endl;
+      std::exit(1);
+    }
+
+    unifiedPadPVector = (std::string(env) != "0");
+  }
+
+  env = std::getenv(CG_CUDA_UNIFIED_MEM_ADVISE);
+  if (env != NULL && *env != 0) {
+    if (gatherImpl != GatherImplUnified) {
+      std::cerr << CG_CUDA_UNIFIED_MEM_ADVISE
+                << " may only be used for unified memory!" << std::endl;
+      std::exit(1);
+    }
+
+    unifiedMemAdvise = (std::string(env) != "0");
   }
 }
 
 void CGMultiCUDA::init(const char *matrixFile) {
   int numberOfDevices;
   cudaGetDeviceCount(&numberOfDevices);
+
+  if (gatherImpl == GatherImplUnified && unifiedPadPVector && numberOfDevices != 2) {
+    std::cerr << CG_CUDA_UNIFIED_PAD_PVECTOR
+              << " may only be used with exactly 2 devices!" << std::endl;
+    std::exit(1);
+  }
 
   devices.resize(numberOfDevices);
   for (int d = 0; d < numberOfDevices; d++) {
@@ -202,6 +260,24 @@ void CGMultiCUDA::init(const char *matrixFile) {
 
   if (gatherImpl == GatherImplHost) {
     checkedMallocHost(&p, sizeof(floatType) * N);
+  } else if (gatherImpl == GatherImplUnified) {
+    size_t size = sizeof(floatType) * N;
+    if (unifiedPadPVector) {
+      // We need additional space for the alignment.
+      size += UnifiedMemoryAlignment;
+    }
+
+    checkError(cudaMallocManaged(&pUnified, size));
+    if (unifiedPadPVector) {
+      // Pad pointer so that the offset of the second device is aligned.
+      void *secondDevice = pUnified + workDistribution->offsets[1];
+      size_t padding = UnifiedMemoryAlignment;
+      padding -= ((size_t) secondDevice) & (UnifiedMemoryAlignment - 1);
+      p = (floatType *) (((char *)pUnified) + padding);
+    } else {
+      // Just take the pointer...
+      p = pUnified;
+    }
   }
 }
 
@@ -244,7 +320,12 @@ void CGMultiCUDA::doTransferToForDevice(int index) {
   checkedMemcpyToDevice(device.k, k + offset, vectorSize);
   checkedMemcpyToDevice(device.x, x, fullVectorSize);
 
-  checkedMalloc(&device.p, fullVectorSize);
+  if (gatherImpl != GatherImplUnified) {
+    checkedMalloc(&device.p, fullVectorSize);
+  } else if (unifiedMemAdvise) {
+    checkError(cudaMemAdvise(p + offset, length,
+                             cudaMemAdviseSetPreferredLocation, d));
+  }
   checkedMalloc(&device.q, vectorSize);
   checkedMalloc(&device.r, vectorSize);
 
@@ -287,7 +368,7 @@ void CGMultiCUDA::doTransferToForDevice(int index) {
     }
   }
 
-  checkedMalloc(&device.tmp, sizeof(floatType) * Device::MaxBlocks);
+  checkedMalloc(&device.tmp, sizeof(floatType) * MaxBlocks);
 }
 
 void CGMultiCUDA::doTransferTo() {
@@ -468,13 +549,13 @@ void CGMultiCUDA::matvecKernel(Vector _x, Vector _y) {
 
       switch (matrixFormat) {
       case MatrixFormatCRS:
-        matvecKernelCRS<<<device.blocksMatvec, Device::Threads, 0,
+        matvecKernelCRS<<<device.blocksMatvec, Threads, 0,
                           device.overlappedMatvecStream>>>(
             device.diagMatrixCRS.ptr, device.diagMatrixCRS.index,
             device.diagMatrixCRS.value, x, y, length);
         break;
       case MatrixFormatELL:
-        matvecKernelELL<<<device.blocksMatvec, Device::Threads, 0,
+        matvecKernelELL<<<device.blocksMatvec, Threads, 0,
                           device.overlappedMatvecStream>>>(
             device.diagMatrixELL.length, device.diagMatrixELL.index,
             device.diagMatrixELL.data, x, y, length);
@@ -494,6 +575,14 @@ void CGMultiCUDA::matvecKernel(Vector _x, Vector _y) {
   case GatherImplP2P:
     matvecGatherXOnDevices(_x);
     break;
+  case GatherImplUnified:
+    if (_x == VectorP) {
+      // No action needed for unified memory.
+      // TODO: Add hints / prefetching?
+    } else {
+      matvecGatherXViaHost(_x);
+    }
+    break;
   default:
     assert(0 && "Invalid gather implementation!");
   }
@@ -508,7 +597,7 @@ void CGMultiCUDA::matvecKernel(Vector _x, Vector _y) {
     switch (matrixFormat) {
     case MatrixFormatCRS:
       if (!overlappedGather) {
-        matvecKernelCRS<<<device.blocksMatvec, Device::Threads>>>(
+        matvecKernelCRS<<<device.blocksMatvec, Threads>>>(
             device.matrixCRS.ptr, device.matrixCRS.index,
             device.matrixCRS.value, x, y, length);
       } else {
@@ -516,7 +605,7 @@ void CGMultiCUDA::matvecKernel(Vector _x, Vector _y) {
         cudaStreamWaitEvent(device.overlappedMatvecStream,
                             device.gatherFinished, 0);
 
-        matvecKernelCRSRoundup<<<device.blocksMatvec, Device::Threads, 0,
+        matvecKernelCRSRoundup<<<device.blocksMatvec, Threads, 0,
                                  device.overlappedMatvecStream>>>(
             device.matrixCRS.ptr, device.matrixCRS.index,
             device.matrixCRS.value, x, y, length);
@@ -524,7 +613,7 @@ void CGMultiCUDA::matvecKernel(Vector _x, Vector _y) {
       break;
     case MatrixFormatELL:
       if (!overlappedGather) {
-        matvecKernelELL<<<device.blocksMatvec, Device::Threads>>>(
+        matvecKernelELL<<<device.blocksMatvec, Threads>>>(
             device.matrixELL.length, device.matrixELL.index,
             device.matrixELL.data, x, y, length);
       } else {
@@ -532,7 +621,7 @@ void CGMultiCUDA::matvecKernel(Vector _x, Vector _y) {
         cudaStreamWaitEvent(device.overlappedMatvecStream,
                             device.gatherFinished, 0);
 
-        matvecKernelELLRoundup<<<device.blocksMatvec, Device::Threads, 0,
+        matvecKernelELLRoundup<<<device.blocksMatvec, Threads, 0,
                                  device.overlappedMatvecStream>>>(
             device.matrixELL.length, device.matrixELL.index,
             device.matrixELL.data, x, y, length);
@@ -555,7 +644,7 @@ void CGMultiCUDA::axpyKernel(floatType a, Vector _x, Vector _y) {
     floatType *x = device.getVector(_x);
     floatType *y = device.getVector(_y);
 
-    axpyKernelCUDA<<<device.blocks, Device::Threads>>>(a, x, y, length);
+    axpyKernelCUDA<<<device.blocks, Threads>>>(a, x, y, length);
     checkLastError();
   }
 
@@ -570,7 +659,7 @@ void CGMultiCUDA::xpayKernel(Vector _x, floatType a, Vector _y) {
     floatType *x = device.getVector(_x);
     floatType *y = device.getVector(_y);
 
-    xpayKernelCUDA<<<device.blocks, Device::Threads>>>(x, a, y, length);
+    xpayKernelCUDA<<<device.blocks, Threads>>>(x, a, y, length);
     checkLastError();
   }
 
@@ -579,10 +668,8 @@ void CGMultiCUDA::xpayKernel(Vector _x, floatType a, Vector _y) {
 
 floatType CGMultiCUDA::vectorDotKernel(Vector _a, Vector _b) {
   // This is needed for warpReduceSum on __CUDA_ARCH__ < 350
-  size_t sharedForVectorDot =
-      max(Device::Threads, BlockReduction) * sizeof(floatType);
-  size_t sharedForReduce =
-      max(Device::MaxBlocks, BlockReduction) * sizeof(floatType);
+  size_t sharedForVectorDot = max(Threads, BlockReduction) * sizeof(floatType);
+  size_t sharedForReduce = max(MaxBlocks, BlockReduction) * sizeof(floatType);
 
   for (MultiDevice &device : devices) {
     device.setDevice();
@@ -592,10 +679,10 @@ floatType CGMultiCUDA::vectorDotKernel(Vector _a, Vector _b) {
     floatType *b = device.getVector(_b);
 
     // https://devblogs.nvidia.com/parallelforall/faster-parallel-reductions-kepler/
-    vectorDotKernelCUDA<<<device.blocks, Device::Threads, sharedForVectorDot>>>(
+    vectorDotKernelCUDA<<<device.blocks, Threads, sharedForVectorDot>>>(
         a, b, device.tmp, length);
     checkLastError();
-    deviceReduceKernel<<<1, Device::MaxBlocks, sharedForReduce>>>(
+    deviceReduceKernel<<<1, MaxBlocks, sharedForReduce>>>(
         device.tmp, device.tmp, device.blocks);
     checkLastError();
   }
@@ -625,7 +712,7 @@ void CGMultiCUDA::applyPreconditionerKernel(Vector _x, Vector _y) {
 
     switch (preconditioner) {
     case PreconditionerJacobi:
-      applyPreconditionerKernelJacobi<<<device.blocks, Device::Threads>>>(
+      applyPreconditionerKernelJacobi<<<device.blocks, Threads>>>(
           device.jacobi.C, x, y, length);
       break;
     default:
@@ -652,9 +739,21 @@ void CGMultiCUDA::printSummary() {
   case GatherImplP2P:
     gatherImplName = "peer-to-peer (NVLink)";
     break;
+  case GatherImplUnified:
+    gatherImplName = "unified memory";
   }
   assert(gatherImplName.length() > 0);
   printPadded("Gather implementation:", gatherImplName);
+  if (gatherImpl == GatherImplUnified) {
+    std::cout << "Unified memory implies overlapping the gather!";
+    if (unifiedPadPVector) {
+      std::cout << " The vector 'p' was padded to align on page size.";
+    }
+    if (unifiedMemAdvise) {
+      std::cout << " Memory advices were given.";
+    }
+    std::cout << std::endl;
+  }
 }
 
 CG *CG::getInstance() { return new CGMultiCUDA; }

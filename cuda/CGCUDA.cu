@@ -86,7 +86,7 @@ void CGCUDA::doTransferTo() {
     }
   }
 
-  checkedMalloc(&device.tmp, sizeof(floatType) * Device::MaxBlocks);
+  checkedMalloc(&device.tmp, sizeof(floatType) * MaxBlocks);
   checkedSynchronize();
 }
 
@@ -140,12 +140,12 @@ void CGCUDA::matvecKernel(Vector _x, Vector _y) {
 
   switch (matrixFormat) {
   case MatrixFormatCRS:
-    matvecKernelCRS<<<device.blocksMatvec, Device::Threads>>>(
+    matvecKernelCRS<<<device.blocksMatvec, Threads>>>(
         device.matrixCRS.ptr, device.matrixCRS.index, device.matrixCRS.value, x,
         y, N);
     break;
   case MatrixFormatELL:
-    matvecKernelELL<<<device.blocksMatvec, Device::Threads>>>(
+    matvecKernelELL<<<device.blocksMatvec, Threads>>>(
         device.matrixELL.length, device.matrixELL.index, device.matrixELL.data,
         x, y, N);
     break;
@@ -160,7 +160,7 @@ void CGCUDA::axpyKernel(floatType a, Vector _x, Vector _y) {
   floatType *x = device.getVector(_x);
   floatType *y = device.getVector(_y);
 
-  axpyKernelCUDA<<<device.blocks, Device::Threads>>>(a, x, y, N);
+  axpyKernelCUDA<<<device.blocks, Threads>>>(a, x, y, N);
   checkLastError();
   checkedSynchronize();
 }
@@ -169,7 +169,7 @@ void CGCUDA::xpayKernel(Vector _x, floatType a, Vector _y) {
   floatType *x = device.getVector(_x);
   floatType *y = device.getVector(_y);
 
-  xpayKernelCUDA<<<device.blocks, Device::Threads>>>(x, a, y, N);
+  xpayKernelCUDA<<<device.blocks, Threads>>>(x, a, y, N);
   checkLastError();
   checkedSynchronize();
 }
@@ -180,17 +180,15 @@ floatType CGCUDA::vectorDotKernel(Vector _a, Vector _b) {
   floatType *b = device.getVector(_b);
 
   // This is needed for warpReduceSum on __CUDA_ARCH__ < 350
-  size_t sharedForVectorDot =
-      max(Device::Threads, BlockReduction) * sizeof(floatType);
-  size_t sharedForReduce =
-      max(Device::MaxBlocks, BlockReduction) * sizeof(floatType);
+  size_t sharedForVectorDot = max(Threads, BlockReduction) * sizeof(floatType);
+  size_t sharedForReduce = max(MaxBlocks, BlockReduction) * sizeof(floatType);
 
   // https://devblogs.nvidia.com/parallelforall/faster-parallel-reductions-kepler/
-  vectorDotKernelCUDA<<<device.blocks, Device::Threads, sharedForVectorDot>>>(
+  vectorDotKernelCUDA<<<device.blocks, Threads, sharedForVectorDot>>>(
       a, b, device.tmp, N);
   checkLastError();
-  deviceReduceKernel<<<1, Device::MaxBlocks, sharedForReduce>>>(
-      device.tmp, device.tmp, device.blocks);
+  deviceReduceKernel<<<1, MaxBlocks, sharedForReduce>>>(device.tmp, device.tmp,
+                                                        device.blocks);
   checkLastError();
 
   checkedMemcpy(&res, device.tmp, sizeof(floatType), cudaMemcpyDeviceToHost);
@@ -205,8 +203,8 @@ void CGCUDA::applyPreconditionerKernel(Vector _x, Vector _y) {
 
   switch (preconditioner) {
   case PreconditionerJacobi:
-    applyPreconditionerKernelJacobi<<<device.blocks, Device::Threads>>>(
-        device.jacobi.C, x, y, N);
+    applyPreconditionerKernelJacobi<<<device.blocks, Threads>>>(device.jacobi.C,
+                                                                x, y, N);
     break;
   default:
     assert(0 && "Invalid preconditioner!");

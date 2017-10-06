@@ -32,14 +32,6 @@ protected:
   /// Holds information about a single device, especially memory and its
   /// launch configuration.
   struct Device {
-    /// Number of threads for all kernels.
-    static const int Threads = 128;
-    /// Maximum number of blocks for all kernels except CG#matvec.
-    static const int MaxBlocks = 1024;
-    /// Maximum number of blocks for CG#matvec.
-    /// (65536 seems to not work on the Pascal nodes!)
-    static const int MaxBlocksMatvec = 65535;
-
     /// Number of blocks for all kernels except CG#matvec.
     int blocks;
     /// Number of blocks for CG#matvec.
@@ -91,8 +83,7 @@ protected:
 
     /// Calculate the launch configuration for vectors of length \a N.
     void calculateLaunchConfiguration(int N) {
-      blocks = calculateBlocks(N, Threads, MaxBlocks);
-      blocksMatvec = calculateBlocks(N, Threads, MaxBlocksMatvec);
+      getLaunchConfiguration(N, blocks, blocksMatvec);
     }
 
     /// @return pointer to the vector on this device.

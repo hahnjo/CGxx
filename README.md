@@ -17,11 +17,12 @@ Environment variables
 | --- | --- | --- | --- |
 | `CG_MAX_ITER` | Maximum number of iterations | integer greater than zero | 1000 |
 | `CG_TOLERANCE` | Tolerance for convergence | number greater than zero | 1e-9 |
+| `CG_CHECK_TOLERANCE` | Tolerance for checking the solution | number greater than zero | 1e-5 |
 | `CG_MATRIX_FORMAT` | Matrix format to use in computation | `COO`, `CRS`, `ELL` | depends on programming model |
 | `CG_PRECONDITIONER` | Preconditioner to use | `none`, `jacobi` | depends on programming model |
 | `CG_WORK_DISTRIBUTION` | Way of distributing work to multiple devices | `row`, `nz` | `row` |
 | `CG_OVERLAPPED_GATHER` | Whether to overlap computation and communication for multiple devices | `0` = disabled | depends on programming model |
-| `CG_CUDA_GATHER_IMPL` | Implementation to use for gathering in `matvec` kernel | `host`, `device`, `p2p` | `host` |
+| `CG_CUDA_GATHER_IMPL` | Implementation to use for gathering in `matvec` kernel | `host`, `device`, `p2p`, `unified` | `host` |
 | `CG_OCL_PARALLEL_TRANSFER_TO` | Whether to transfer the data to the device in parallel | `0` = disabled | enabled |
 | `CG_OCL_GATHER_IMPL` | Implementation to use for gathering in `matvec` kernel | `host`, `device` | `host` |
 
