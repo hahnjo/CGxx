@@ -287,7 +287,7 @@ void CGMultiCUDA::doTransferToForDevice(int index) {
     }
   }
 
-  checkedMalloc(&device.tmp, sizeof(floatType) * Device::MaxBlocks);
+  checkedMalloc(&device.tmp, sizeof(floatType) * MaxBlocks);
 }
 
 void CGMultiCUDA::doTransferTo() {
@@ -468,13 +468,13 @@ void CGMultiCUDA::matvecKernel(Vector _x, Vector _y) {
 
       switch (matrixFormat) {
       case MatrixFormatCRS:
-        matvecKernelCRS<<<device.blocksMatvec, Device::Threads, 0,
+        matvecKernelCRS<<<device.blocksMatvec, Threads, 0,
                           device.overlappedMatvecStream>>>(
             device.diagMatrixCRS.ptr, device.diagMatrixCRS.index,
             device.diagMatrixCRS.value, x, y, length);
         break;
       case MatrixFormatELL:
-        matvecKernelELL<<<device.blocksMatvec, Device::Threads, 0,
+        matvecKernelELL<<<device.blocksMatvec, Threads, 0,
                           device.overlappedMatvecStream>>>(
             device.diagMatrixELL.length, device.diagMatrixELL.index,
             device.diagMatrixELL.data, x, y, length);
@@ -508,7 +508,7 @@ void CGMultiCUDA::matvecKernel(Vector _x, Vector _y) {
     switch (matrixFormat) {
     case MatrixFormatCRS:
       if (!overlappedGather) {
-        matvecKernelCRS<<<device.blocksMatvec, Device::Threads>>>(
+        matvecKernelCRS<<<device.blocksMatvec, Threads>>>(
             device.matrixCRS.ptr, device.matrixCRS.index,
             device.matrixCRS.value, x, y, length);
       } else {
@@ -516,7 +516,7 @@ void CGMultiCUDA::matvecKernel(Vector _x, Vector _y) {
         cudaStreamWaitEvent(device.overlappedMatvecStream,
                             device.gatherFinished, 0);
 
-        matvecKernelCRSRoundup<<<device.blocksMatvec, Device::Threads, 0,
+        matvecKernelCRSRoundup<<<device.blocksMatvec, Threads, 0,
                                  device.overlappedMatvecStream>>>(
             device.matrixCRS.ptr, device.matrixCRS.index,
             device.matrixCRS.value, x, y, length);
@@ -524,7 +524,7 @@ void CGMultiCUDA::matvecKernel(Vector _x, Vector _y) {
       break;
     case MatrixFormatELL:
       if (!overlappedGather) {
-        matvecKernelELL<<<device.blocksMatvec, Device::Threads>>>(
+        matvecKernelELL<<<device.blocksMatvec, Threads>>>(
             device.matrixELL.length, device.matrixELL.index,
             device.matrixELL.data, x, y, length);
       } else {
@@ -532,7 +532,7 @@ void CGMultiCUDA::matvecKernel(Vector _x, Vector _y) {
         cudaStreamWaitEvent(device.overlappedMatvecStream,
                             device.gatherFinished, 0);
 
-        matvecKernelELLRoundup<<<device.blocksMatvec, Device::Threads, 0,
+        matvecKernelELLRoundup<<<device.blocksMatvec, Threads, 0,
                                  device.overlappedMatvecStream>>>(
             device.matrixELL.length, device.matrixELL.index,
             device.matrixELL.data, x, y, length);
@@ -555,7 +555,7 @@ void CGMultiCUDA::axpyKernel(floatType a, Vector _x, Vector _y) {
     floatType *x = device.getVector(_x);
     floatType *y = device.getVector(_y);
 
-    axpyKernelCUDA<<<device.blocks, Device::Threads>>>(a, x, y, length);
+    axpyKernelCUDA<<<device.blocks, Threads>>>(a, x, y, length);
     checkLastError();
   }
 
@@ -570,7 +570,7 @@ void CGMultiCUDA::xpayKernel(Vector _x, floatType a, Vector _y) {
     floatType *x = device.getVector(_x);
     floatType *y = device.getVector(_y);
 
-    xpayKernelCUDA<<<device.blocks, Device::Threads>>>(x, a, y, length);
+    xpayKernelCUDA<<<device.blocks, Threads>>>(x, a, y, length);
     checkLastError();
   }
 
@@ -579,10 +579,8 @@ void CGMultiCUDA::xpayKernel(Vector _x, floatType a, Vector _y) {
 
 floatType CGMultiCUDA::vectorDotKernel(Vector _a, Vector _b) {
   // This is needed for warpReduceSum on __CUDA_ARCH__ < 350
-  size_t sharedForVectorDot =
-      max(Device::Threads, BlockReduction) * sizeof(floatType);
-  size_t sharedForReduce =
-      max(Device::MaxBlocks, BlockReduction) * sizeof(floatType);
+  size_t sharedForVectorDot = max(Threads, BlockReduction) * sizeof(floatType);
+  size_t sharedForReduce = max(MaxBlocks, BlockReduction) * sizeof(floatType);
 
   for (MultiDevice &device : devices) {
     device.setDevice();
@@ -592,10 +590,10 @@ floatType CGMultiCUDA::vectorDotKernel(Vector _a, Vector _b) {
     floatType *b = device.getVector(_b);
 
     // https://devblogs.nvidia.com/parallelforall/faster-parallel-reductions-kepler/
-    vectorDotKernelCUDA<<<device.blocks, Device::Threads, sharedForVectorDot>>>(
+    vectorDotKernelCUDA<<<device.blocks, Threads, sharedForVectorDot>>>(
         a, b, device.tmp, length);
     checkLastError();
-    deviceReduceKernel<<<1, Device::MaxBlocks, sharedForReduce>>>(
+    deviceReduceKernel<<<1, MaxBlocks, sharedForReduce>>>(
         device.tmp, device.tmp, device.blocks);
     checkLastError();
   }
@@ -625,7 +623,7 @@ void CGMultiCUDA::applyPreconditionerKernel(Vector _x, Vector _y) {
 
     switch (preconditioner) {
     case PreconditionerJacobi:
-      applyPreconditionerKernelJacobi<<<device.blocks, Device::Threads>>>(
+      applyPreconditionerKernelJacobi<<<device.blocks, Threads>>>(
           device.jacobi.C, x, y, length);
       break;
     default:

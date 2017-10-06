@@ -42,6 +42,10 @@ static inline void checkedMalloc(void *devPtr, size_t size) {
   checkError(cudaMalloc((void **)devPtr, size));
 }
 
+static inline void checkedMallocManaged(void *devPtr, size_t size) {
+  checkError(cudaMallocManaged((void **)devPtr, size));
+}
+
 static inline void checkedMemcpy(void *dst, const void *src, size_t count,
                                  enum cudaMemcpyKind kind) {
   checkError(cudaMemcpy(dst, src, count, kind));
@@ -79,6 +83,21 @@ static inline int calculateBlocks(int N, int threads, int maxBlocks) {
   } while (blocks > maxBlocks);
 
   return blocks;
+}
+
+/// Number of threads for all kernels.
+static const int Threads = 128;
+/// Maximum number of blocks for all kernels except CG#matvec.
+static const int MaxBlocks = 1024;
+/// Maximum number of blocks for CG#matvec.
+/// (65536 seems to not work on the Pascal nodes!)
+static const int MaxBlocksMatvec = 65535;
+
+/// Calculate the launch configuration for vectors of length \a N and store
+/// the parameters in \a blocks and \a blocksMatvec.
+static inline void getLaunchConfiguration(int N, int &blocks, int &blocksMatvec) {
+  blocks = calculateBlocks(N, Threads, MaxBlocks);
+  blocksMatvec = calculateBlocks(N, Threads, MaxBlocksMatvec);
 }
 
 #endif
