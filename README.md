@@ -17,6 +17,7 @@ Environment variables
 | --- | --- | --- | --- |
 | `CG_MAX_ITER` | Maximum number of iterations | integer greater than zero | 1000 |
 | `CG_TOLERANCE` | Tolerance for convergence | number greater than zero | 1e-9 |
+| `CG_CHECK_TOLERANCE` | Tolerance for checking the solution | number greater than zero | 1e-5 |
 | `CG_MATRIX_FORMAT` | Matrix format to use in computation | `COO`, `CRS`, `ELL` | depends on programming model |
 | `CG_PRECONDITIONER` | Preconditioner to use | `none`, `jacobi` | depends on programming model |
 | `CG_WORK_DISTRIBUTION` | Way of distributing work to multiple devices | `row`, `nz` | `row` |

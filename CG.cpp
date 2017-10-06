@@ -31,6 +31,7 @@
 
 const char *CG_MAX_ITER = "CG_MAX_ITER";
 const char *CG_TOLERANCE = "CG_TOLERANCE";
+const char *CG_CHECK_TOLERANCE = "CG_CHECK_TOLERANCE";
 
 const char *CG_MATRIX_FORMAT = "CG_MATRIX_FORMAT";
 const char *CG_MATRIX_FORMAT_COO = "COO";
@@ -71,6 +72,19 @@ void CG::parseEnvironment() {
       this->tolerance = tolerance;
     } else {
       std::cerr << "Invalid value for " << CG_TOLERANCE << "!" << std::endl;
+      std::exit(1);
+    }
+  }
+
+  env = std::getenv(CG_CHECK_TOLERANCE);
+  if (env != NULL && *env != 0) {
+    errno = 0;
+    floatType checkTolerance = strtod(env, &endptr);
+    if (errno == 0 && *endptr == 0 && tolerance > 0) {
+      this->checkTolerance = checkTolerance;
+    } else {
+      std::cerr << "Invalid value for " << CG_CHECK_TOLERANCE << "!"
+                << std::endl;
       std::exit(1);
     }
   }
@@ -382,6 +396,29 @@ void CG::solve() {
   timing.solve = now() - start;
 }
 
+bool CG::check() {
+  std::cout << "Checking solution..." << std::endl;
+  time_point start = now();
+
+  int errors = 0;
+  for (int i = 0; i < N; i++) {
+    // All elements of x should be 1, see initialization of k.
+    if (std::abs(x[i] - 1.0) > checkTolerance) {
+      errors++;
+    }
+  }
+
+  timing.check = now() - start;
+
+  if (errors == 0) {
+    std::cout << "Solution is correct!" << std::endl;
+  } else {
+    std::cout << errors << " elements are incorrect!" << std::endl;
+  }
+
+  return (errors == 0);
+}
+
 const int maxLabelWidth = 25;
 void CG::printPadded(const char *label, const std::string &value) {
   std::cout << std::left << std::setw(maxLabelWidth) << label;
@@ -471,6 +508,10 @@ void CG::printSummary() {
     printPadded("Transfer from time:", std::to_string(transferFrom));
     total += transferFrom;
   }
+  double check = timing.check.count();
+  printPadded("Check time:", std::to_string(check));
+  total += check;
+
   printPadded("Total time (excl. IO):", std::to_string(total));
 
   std::cout << std::endl;
@@ -530,6 +571,7 @@ int main(int argc, char *argv[]) {
   if (cg->needsTransfer()) {
     cg->transferFrom();
   }
+  cg->check();
 
   cg->printSummary();
   cg->cleanup();
