@@ -33,6 +33,7 @@ class CGMultiCUDA : public CGCUDABase {
     GatherImplHost,
     GatherImplDevice,
     GatherImplP2P,
+    GatherImplUnified,
   };
 
   struct MultiDevice : Device {
@@ -74,7 +75,15 @@ class CGMultiCUDA : public CGCUDABase {
     floatType *getVector(Vector v, bool forMatvec) const {
       assert(!forMatvec || (v == VectorX || v == VectorP));
 
-      floatType *res = Device::getVector(v);
+      floatType *res;
+      // With unified memory, there is only one address that is valid for the
+      // host and all devices.
+      if (cg->gatherImpl == GatherImplUnified && v == VectorP) {
+        res = cg->p;
+      } else {
+        res = Device::getVector(v);
+      }
+
       if (!forMatvec && (v == VectorX || v == VectorP)) {
         // These vectors are fully allocated, but we only need the "local" part.
         res += cg->workDistribution->offsets[id];
@@ -120,6 +129,8 @@ class CGMultiCUDA : public CGCUDABase {
 
     if (gatherImpl == GatherImplHost) {
       checkedFreeHost(p);
+    } else if (gatherImpl == GatherImplUnified) {
+      checkedFree(p);
     }
   }
 
@@ -131,6 +142,7 @@ const char *CG_CUDA_GATHER_IMPL = "CG_CUDA_GATHER_IMPL";
 const char *CG_CUDA_GATHER_IMPL_HOST = "host";
 const char *CG_CUDA_GATHER_IMPL_DEVICE = "device";
 const char *CG_CUDA_GATHER_IMPL_P2P = "p2p";
+const char *CG_CUDA_GATHER_IMPL_UNIFIED = "unified";
 
 void CGMultiCUDA::parseEnvironment() {
   CG::parseEnvironment();
@@ -146,11 +158,21 @@ void CGMultiCUDA::parseEnvironment() {
       gatherImpl = GatherImplDevice;
     } else if (lower == CG_CUDA_GATHER_IMPL_P2P) {
       gatherImpl = GatherImplP2P;
+    } else if (lower == CG_CUDA_GATHER_IMPL_UNIFIED) {
+      gatherImpl = GatherImplUnified;
+
+      if (overlappedGather) {
+        overlappedGather = false;
+      } else {
+        std::cerr << "WARNING: Unified memory implies overlapping the gather!"
+                  << std::endl;
+      }
     } else {
       std::cerr << "Invalid value for " << CG_CUDA_GATHER_IMPL << "! ("
                 << CG_CUDA_GATHER_IMPL_HOST << ", "
-                << CG_CUDA_GATHER_IMPL_DEVICE << ", or "
-                << CG_CUDA_GATHER_IMPL_P2P << ")" << std::endl;
+                << CG_CUDA_GATHER_IMPL_DEVICE << ", "
+                << CG_CUDA_GATHER_IMPL_P2P << ", or "
+                << CG_CUDA_GATHER_IMPL_UNIFIED << ")" << std::endl;
       std::exit(1);
     }
   }
@@ -202,6 +224,8 @@ void CGMultiCUDA::init(const char *matrixFile) {
 
   if (gatherImpl == GatherImplHost) {
     checkedMallocHost(&p, sizeof(floatType) * N);
+  } else if (gatherImpl == GatherImplUnified) {
+    checkError(cudaMallocManaged(&p, sizeof(floatType) * N));
   }
 }
 
@@ -244,7 +268,9 @@ void CGMultiCUDA::doTransferToForDevice(int index) {
   checkedMemcpyToDevice(device.k, k + offset, vectorSize);
   checkedMemcpyToDevice(device.x, x, fullVectorSize);
 
-  checkedMalloc(&device.p, fullVectorSize);
+  if (gatherImpl != GatherImplUnified) {
+    checkedMalloc(&device.p, fullVectorSize);
+  }
   checkedMalloc(&device.q, vectorSize);
   checkedMalloc(&device.r, vectorSize);
 
@@ -494,6 +520,14 @@ void CGMultiCUDA::matvecKernel(Vector _x, Vector _y) {
   case GatherImplP2P:
     matvecGatherXOnDevices(_x);
     break;
+  case GatherImplUnified:
+    if (_x == VectorP) {
+      // No action needed for unified memory.
+      // TODO: Add hints / prefetching?
+    } else {
+      matvecGatherXViaHost(_x);
+    }
+    break;
   default:
     assert(0 && "Invalid gather implementation!");
   }
@@ -650,9 +684,14 @@ void CGMultiCUDA::printSummary() {
   case GatherImplP2P:
     gatherImplName = "peer-to-peer (NVLink)";
     break;
+  case GatherImplUnified:
+    gatherImplName = "unified memory";
   }
   assert(gatherImplName.length() > 0);
   printPadded("Gather implementation:", gatherImplName);
+  if (gatherImpl == GatherImplUnified) {
+    std::cout << "Unified memory implies overlapping the gather!" << std::endl;
+  }
 }
 
 CG *CG::getInstance() { return new CGMultiCUDA; }
