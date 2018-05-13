@@ -45,3 +45,10 @@ The code is released under the GNU General Public License v3:
 
     You should have received a copy of the GNU General Public License
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+Individual files contain the following tag instead of the full license text.
+
+	SPDX-License-Identifier:	GPL-3.0-or-later
+
+This enables machine processing of license information based on the SPDX
+License Identifiers that are here available: http://spdx.org/licenses/

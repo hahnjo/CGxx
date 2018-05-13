@@ -1,1 +1,3 @@
+// SPDX-License-Identifier:	GPL-3.0-or-later
+
 #cmakedefine01 OPENCL_USE_SVM
