@@ -10,6 +10,11 @@ This implementation can make use of different programming models:
 If applicable, the offloading programming model also includes a version for multiple devices.
 In addition, there is a serial implementation for reference.
 
+Usage
+-----
+
+The resulting binaries can be started from command line: `<binary> <matrix.mtx> [<repetitions>]`
+
 Environment variables
 ---------------------
 

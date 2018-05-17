@@ -245,6 +245,19 @@ public:
   /// Init data by reading matrix from \a matrixFile.
   virtual void init(const char *matrixFile);
 
+  /// Reset values in x vector.
+  void resetX();
+  /// Reset all timings except for initialization.
+  void resetNonInitTimings() {
+    Timing old = timing;
+    // Create new object with zero values.
+    timing = Timing{};
+
+    // Copy init timings.
+    timing.io = old.io;
+    timing.converting = old.converting;
+  }
+
   /// @return true if this implementation needs to transfer data for solving.
   virtual bool needsTransfer() { return false; }
   /// Transfer data before calling #solve().

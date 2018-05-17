@@ -261,13 +261,17 @@ void CG::init(const char *matrixFile) {
   }
 
   allocateX();
-  // Start with (0, ..., 0)^T
-  std::memset(x, 0, sizeof(floatType) * N);
+  resetX();
 
   if (matrixFormat != MatrixFormatCOO) {
     // Release matrixCOO which is not needed anymore.
     matrixCOO.reset();
   }
+}
+
+void CG::resetX() {
+  // Start with (0, ..., 0)^T
+  std::memset(x, 0, sizeof(floatType) * N);
 }
 
 // #define DEBUG_SOLVE
@@ -533,9 +537,22 @@ void CG::cleanup() {
 }
 
 int main(int argc, char *argv[]) {
-  if (argc != 2) {
-    std::cerr << "Usage: " << argv[0] << " <matrix.mtx>" << std::endl;
+  if (argc != 2 && argc != 3) {
+    std::cerr << "Usage: " << argv[0] << " <matrix.mtx> [<repetitions>]"
+              << std::endl;
     std::exit(1);
+  }
+
+  int repetitions = 1;
+  if (argc > 2) {
+    char *endptr;
+    errno = 0;
+    int temp = strtol(argv[2], &endptr, 0);
+    if (errno == 0 && *endptr == 0 && temp > 0) {
+      repetitions = temp;
+    } else {
+      std::cerr << "Invalid value for repetitions! Disabling..." << std::endl;
+    }
   }
 
 #ifdef __PGI
@@ -548,16 +565,26 @@ int main(int argc, char *argv[]) {
   cg->parseEnvironment();
   cg->init(argv[1]);
 
-  if (cg->needsTransfer()) {
-    cg->transferTo();
-  }
-  cg->solve();
-  if (cg->needsTransfer()) {
-    cg->transferFrom();
-  }
-  cg->check();
+  for (int i = 0; i < repetitions; i++) {
+    if (i != 0) {
+      std::cout << std::endl;
+    }
 
-  cg->printSummary();
+    if (cg->needsTransfer()) {
+      cg->transferTo();
+    }
+    cg->solve();
+    if (cg->needsTransfer()) {
+      cg->transferFrom();
+    }
+    cg->check();
+    cg->printSummary();
+
+    // Reset solution vector for next repetition.
+    cg->resetX();
+    cg->resetNonInitTimings();
+  }
+
   cg->cleanup();
 
   return EXIT_SUCCESS;
