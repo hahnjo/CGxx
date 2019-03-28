@@ -13,6 +13,8 @@ struct Jacobi {
   /// Reciprocal diagonal elements of the matrix.
   floatType *C;
 
+  virtual ~Jacobi() { }
+
   /// Initialize object with \a coo for an efficient %Jacobi preconditioner.
   void init(const MatrixCOO &coo);
 

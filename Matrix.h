@@ -53,6 +53,8 @@ struct MatrixDataCRS {
   /// Values in the matrix.
   floatType *value;
 
+  virtual ~MatrixDataCRS() { }
+
   /// Allocate #ptr.
   virtual void allocatePtr(int rows);
   /// Deallocate #ptr.
@@ -82,6 +84,8 @@ struct MatrixDataELL {
   int *index;
   /// Data in the matrix.
   floatType *data;
+
+  virtual ~MatrixDataELL() { }
 
   /// Allocate #length.
   virtual void allocateLength(int rows);
@@ -120,7 +124,7 @@ template <class Data> struct SplitMatrix : Matrix {
   /// Allocate #data.
   virtual void allocateData();
 
-  ~SplitMatrix();
+  virtual ~SplitMatrix();
 };
 using SplitMatrixCRS = SplitMatrix<MatrixDataCRS>;
 using SplitMatrixELL = SplitMatrix<MatrixDataELL>;
@@ -142,7 +146,7 @@ template <class Data> struct PartitionedMatrix : Matrix {
   /// Allocate #diag and #minor.
   virtual void allocateDiagAndMinor();
 
-  ~PartitionedMatrix();
+  virtual ~PartitionedMatrix();
 };
 using PartitionedMatrixCRS = PartitionedMatrix<MatrixDataCRS>;
 using PartitionedMatrixELL = PartitionedMatrix<MatrixDataELL>;

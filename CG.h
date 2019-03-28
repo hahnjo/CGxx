@@ -240,6 +240,8 @@ protected:
   static void printPadded(const char *label, const std::string &value);
 
 public:
+  virtual ~CG() { }
+
   /// Parse and validate environment variables.
   virtual void parseEnvironment();
   /// Init data by reading matrix from \a matrixFile.

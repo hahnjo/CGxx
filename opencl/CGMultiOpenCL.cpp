@@ -35,7 +35,7 @@ class CGMultiOpenCL : public CGOpenCLBase {
 
     floatType vectorDotResult;
 
-    ~MultiDevice() { clReleaseCommandQueue(gatherQueue); }
+    virtual ~MultiDevice() { clReleaseCommandQueue(gatherQueue); }
 
     virtual void init(cl_device_id device_id, CGOpenCLBase *cg) override {
       Device::init(device_id, cg);
